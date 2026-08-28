@@ -1,0 +1,30 @@
+# Runs the structural checks on a clean machine, where a missing module or an absolute path left
+# in the source shows up as a failure rather than working by accident.
+#
+# Workflows are only read from .github/workflows at the root of the repository, so this file sits
+# here rather than beside the tool it runs; `working-directory` puts each step back in hdom/.
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hdom
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt
+      - run: python tests/test_release.py
+      # test_example needs maligner_dp on PATH. The binary bundled under maligner/ is a Linux
+      # build, so it runs here; if it ever does not, the test skips itself rather than failing.
+      - run: |
+          export PATH="$GITHUB_WORKSPACE/maligner/build/bin:$PATH"
+          python tests/test_example.py
