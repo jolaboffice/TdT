@@ -1,0 +1,22 @@
+# Metadata and dependencies. The pipeline is run as scripts from a clone rather than imported
+# as a library -- hdom/ resolves its own modules by file location -- so there is no wheel to
+# build. Install the dependencies, put maligner_dp on PATH, then run run_pipeline.py.
+[project]
+name = "hdom-pipeline"
+version = "1.0.0"
+description = "Dual-channel (AT-dye backbone + nick label) alignment of single-molecule optical maps"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.21,<2",
+    "scipy>=1.7",
+    "pandas>=1.3",
+    "tifffile>=2021.7",
+    "Pillow>=9.0",
+    "scikit-learn>=1.0",
+    "joblib>=1.1",
+    "numba>=0.55",
+    "matplotlib>=3.4",
+    "cupy",           # GPU: the pcc scanner exits without it
+]

@@ -1,0 +1,12 @@
+# SEM DNA length-measurement + alignment pipeline (tested on Python 3.9)
+numpy>=1.23
+scipy>=1.10
+scikit-image>=0.19
+matplotlib>=3.5
+tifffile>=2021.7
+pillow>=9.0
+
+# Included with this code set (NOT on PyPI): the `maligner` optical-map aligner.
+#   - maligner_dp binary : run directly on $PATH (aligns .maps -> _mal.txt)
+#   - smooth_maps_batch.py   : malignpy importable via PYTHONPATH (override: MALIGNER_PY, :-separated)
+# https://github.com/LeeMendelowitz/maligner

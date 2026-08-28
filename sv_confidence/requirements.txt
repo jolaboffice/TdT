@@ -1,0 +1,8 @@
+# Python 3.9. Versions below are the ones the results were produced and verified with.
+# numpy/tifffile are imported here directly; scipy/matplotlib/Pillow are pulled in at
+# runtime by the bundled shared modules (e.g. matplotlib via DOM_lib_Y) — do not drop.
+numpy==1.23.5
+scipy==1.10.1
+matplotlib==3.9.4
+tifffile==2021.7.2
+Pillow==9.3.0

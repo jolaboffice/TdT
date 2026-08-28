@@ -1,0 +1,69 @@
+cff-version: 1.2.0
+message: If you use this software, please cite it using these metadata.
+type: software
+title: >-
+  hDOM-toolkit: single-molecule genome mapping, structural-variant confidence, and SEM contour measurement
+version: 1.0.0
+license: GPL-3.0-only
+abstract: >-
+  Three tools from a single study of single-molecule genome mapping. hdom assigns molecules to
+  chromosomal loci from two-channel optical maps, re-ranking candidates by a windowed backbone
+  correlation multiplied by a label-set F1. sv_confidence decides whether an inversion or
+  translocation in one molecule is supported, importing hdom's scoring engine rather than
+  reimplementing it. sem_length traces and measures DNA contours in SEM images. The aligner
+  maligner (Mendelowitz et al., GPL v3) is bundled so the pipelines run without a separate build.
+  Includes a two-chromosome example that runs anywhere and a genome-wide example against all 47
+  HG002 chromosome maps, published as a separate file in this record.
+authors:
+  - family-names: Kim
+    given-names: Taesoo
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Yun
+    given-names: Taebin
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Park
+    given-names: Gyuri
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Bae
+    given-names: Jaeyoung
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Noh
+    given-names: Chan young
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Kim
+    given-names: Yejin
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Choe
+    given-names: Joohee
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Shim
+    given-names: Youmin
+    affiliation: >-
+      School of Advanced Materials Science and Engineering, Sungkyunkwan University, Suwon 16149, Korea
+  - family-names: Dongbang
+    given-names: Sun
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
+  - family-names: Shim
+    given-names: Sang-Hee
+    affiliation: >-
+      Department of Chemistry, Korea University, Seoul 02841, Korea
+  - family-names: Lim
+    given-names: Kwang-il
+    affiliation: >-
+      Department of Chemical and Biological Engineering, Sookmyung Women's University, Seoul 04312, Korea
+  - family-names: Lee
+    given-names: Jung Heon
+    affiliation: >-
+      School of Advanced Materials Science and Engineering, Sungkyunkwan University, Suwon 16149, Korea
+  - family-names: Jo
+    given-names: Kyubong
+    affiliation: >-
+      Department of Chemistry, Sogang University, Seoul 04107, Korea
