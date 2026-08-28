@@ -1,0 +1,71 @@
+{
+  "title": "hDOM-toolkit: single-molecule genome mapping, structural-variant confidence, and SEM contour measurement",
+  "description": "Three tools from a single study of single-molecule genome mapping. hdom assigns molecules to chromosomal loci from two-channel optical maps, re-ranking candidates by a windowed backbone correlation multiplied by a label-set F1. sv_confidence decides whether an inversion or translocation in one molecule is supported, importing hdom's scoring engine rather than reimplementing it. sem_length traces and measures DNA contours in SEM images. The aligner maligner (Mendelowitz et al., GPL v3) is bundled so the pipelines run without a separate build. Includes a two-chromosome example that runs anywhere and a genome-wide example against all 47 HG002 chromosome maps, published as a separate file in this record.",
+  "upload_type": "software",
+  "license": "GPL-3.0-only",
+  "version": "1.0.0",
+  "keywords": [
+    "optical mapping",
+    "single-molecule",
+    "genome mapping",
+    "sequence alignment",
+    "structural variation",
+    "scanning electron microscopy",
+    "HG002",
+    "bioinformatics"
+  ],
+  "creators": [
+    {
+      "name": "Kim, Taesoo",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Yun, Taebin",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Park, Gyuri",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Bae, Jaeyoung",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Noh, Chan young",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Kim, Yejin",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Choe, Joohee",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Shim, Youmin",
+      "affiliation": "School of Advanced Materials Science and Engineering, Sungkyunkwan University, Suwon 16149, Korea"
+    },
+    {
+      "name": "Dongbang, Sun",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    },
+    {
+      "name": "Shim, Sang-Hee",
+      "affiliation": "Department of Chemistry, Korea University, Seoul 02841, Korea"
+    },
+    {
+      "name": "Lim, Kwang-il",
+      "affiliation": "Department of Chemical and Biological Engineering, Sookmyung Women's University, Seoul 04312, Korea"
+    },
+    {
+      "name": "Lee, Jung Heon",
+      "affiliation": "School of Advanced Materials Science and Engineering, Sungkyunkwan University, Suwon 16149, Korea"
+    },
+    {
+      "name": "Jo, Kyubong",
+      "affiliation": "Department of Chemistry, Sogang University, Seoul 04107, Korea"
+    }
+  ]
+}
