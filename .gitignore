@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+*.swp
+*~
+
+# Pipeline output
+.sa_*/
+*_view.html
+*_matching_results.csv
+*_vsrandom*.txt
+*_maligner_dp*.txt
+!hdom/example/**
+!hdom/example_genome/**
