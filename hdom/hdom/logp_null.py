@@ -11,6 +11,36 @@ Method (identical to the sidecar generator):
   - CSV "log(P)" for LOCAL rows := log_p (display).  mal/pcc rows are left untouched.
   - writes {base}_vsrandom.txt sidecar (keeps both log_p and log_E, plus null stats).
 
+The p-value is PARAMETRIC, not empirical: a normal is fitted to the null by moment matching and
+log_p is read off its upper tail. mu and sd are ESTIMATES from a finite Monte Carlo sample (write
+them mu-hat and sigma-hat in prose), the empirical shape of the null is discarded, and no
+exceedance count is formed, so there is no zero-count case.
+
+Note what this is NOT. The tail is never fitted; it follows from two moments taken over the whole
+null, so the bulk dictates the shape far to the right. This is not "tail extrapolation" in the
+extreme-value sense (peaks-over-threshold with a GPD fit, or block maxima with a GEV fit), and
+calling it that would claim a better-supported method than the one used here.
+
+The reported values sit far outside what K draws can establish: K=5000 supports an empirical p no
+smaller than 1/(K+1), i.e. log10 P = -3.70. Counting is not an option because in 97.8% of 6,392
+molecules the real placement outscores every one of its 5000 decoys, which collapses the empirical
+estimate to the same "< 1/5001" for nearly every molecule and destroys the ordering the score
+exists to provide.
+
+Sample size is not the binding constraint. Bootstrapping one null (A004, 4000 resamples) pins mu
+to 0.40% and sd to 1.84%, giving a 95% interval on log_p of [-24.91, -21.87] -- about +-1.5 on
+-23.28. The doubling is expected: log10 P ~ -z^2/(2 ln 10) for large z while z ~ 1/sd, so relative
+error in sd enters log_p roughly twice over. Raising K helps slowly (+-1.9 at K=1000, +-0.9 at
+K=5000, +-0.4 at K=20000) and does not address the assumption itself.
+
+That assumption is wrong in a known direction. Over the same 6,392 molecules the null's own maximum
+sits at z = 2.82 (median) where a normal sample of 5000 would put it near 3.54, and 85.0% fall
+below that expectation; a generalised Pareto fit to one null (A004, threshold at q0.90) gives shape
+xi = -0.17, a short tail with a finite right endpoint of 0.323 against an observed 0.653. The true
+tail is thinner than normal, so the fitted normal hands out MORE probability far to the right than
+the data support and the reported log_p is conservative. That GPD fit is a check on the assumption,
+not the reported method. See METHODS.md section 6.
+
 Usage:
   import logp_null as LP;  LP.load_refs()      # once (loads all ref chr profiles)
   LP.compute_logp(base, folder)                # per molecule (reads/writes folder/{base}_*)
@@ -205,8 +235,17 @@ def compute_logp(base, folder, dp=None, force=False):
     null, best_decoy = _build_null_auto(M, dp, w2, chrs, seedb)
     if len(null) < K * 0.5:
         return 'nullfail'
+    # Only these two numbers survive from the K draws. 1e-9 guards a degenerate null (every draw
+    # identical); it cannot arise from real reference data and exists so z is defined rather than
+    # NaN. local_align_pipeline.null_logp uses 1.0 for the same guard -- the two disagree, which is
+    # harmless only because neither branch is reachable with a real reference.
     mu, sd = null.mean(), (null.std() or 1e-9)
     mol_bp = w2 * sc0 * P.BPP
+    # N = how many places in the genome this molecule could have landed, counted as NON-OVERLAPPING
+    # windows of its own length. GENOME_BP is the whole reference map, both haplotypes of every
+    # chromosome (~6.0 Gb diploid), summed in load_refs. The real search tries every offset, not
+    # only the non-overlapping ones, so this undercounts the attempts; log_E is correspondingly a
+    # lower bound on the multiple-testing burden, not an exact Bonferroni factor.
     N = GENOME_BP / mol_bp
     logN = np.log10(N)
     per = []
@@ -217,6 +256,10 @@ def compute_logp(base, folder, dp=None, force=False):
         rr, pk, rl = ALL[ref]
         obs = score_pos(M, dp, w2, rr, pk, rl, int(r['aligned_bp']))
         z = (obs - mu) / sd
+        # Upper tail of the fitted normal, base 10. logsf works in log space, so no underflow
+        # however large z gets (z = 29.9 is the largest seen). obs is typically past the null's
+        # maximum, so this value comes from the fitted distribution, not from any draw -- see the
+        # module docstring.
         lp = float(stats.norm.logsf(z) / np.log(10))
         lE = lp + logN
         r['log(P)'] = f'{lp:.2f}'   # display = log_p (<=0); mal/pcc rows untouched

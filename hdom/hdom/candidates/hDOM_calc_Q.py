@@ -831,6 +831,37 @@ def ensure_matching_csvs(tif_files, tif_data_folder, reference_files, bpp, start
             # Recalculate p_val using global statistics (as log10(P))
             z_scores = (combined_df['cc_rg2'] - global_avg) / global_std
             # Use logsf for better precision with small p-values, then convert to log10
+            #
+            # This reads the upper tail of a normal fitted to global_avg/global_std by moment
+            # matching, in base 10. It is not an empirical p-value, and it is not "tail
+            # extrapolation" in the extreme-value sense either -- the tail is never fitted. Three
+            # further things
+            # about it should be stated rather than inferred from the column name:
+            #
+            # 1. NO CHROMOSOME IS EXCLUDED. all_raw_cc_rg2 is every row of every reference's pcc
+            #    log, the matched chromosome and its homologue included, so the score being
+            #    converted is not merely inside its own calibration set -- it is that set's maximum.
+            #    logp_null.py (`--logp`) does the opposite and drops both haplotypes of the matched
+            #    chromosome before drawing its null.
+            # 2. Each row is one (reference, scale) pair, already maximised over every shift and
+            #    both directions. The population is therefore a distribution of per-chromosome
+            #    maxima, an extreme-value statistic, not a sample of what wrong positions score.
+            #    A normal fit has even less to stand on here than it does in logp_null.py.
+            # 3. cc_rg2 = cc_r * cc_g**2, and cc_g is a cosine taken without mean subtraction, so
+            #    the quantity is a product of three correlated, non-affine-invariant terms.
+            #
+            # Measured effect of (1), over 20 runs (10 molecules, raw and straightened): including
+            # the matched chromosome inflates global_std in 18 of 20 (median 1.08x, max 1.94x) and
+            # so pulls log(P) toward zero. It is conservative, but by an amount that grows with how
+            # good the match is -- on the most confident molecules -23.73 becomes -77.52 and -6.60
+            # becomes -23.53 once the matched chromosome is removed, while weak molecules near -3
+            # barely move. The distortion therefore scales with the very thing being measured, and
+            # the column is NOT comparable across molecules. (Those runs used 17-30 references, in
+            # which the matched chromosome is 2-14% of the population; a full 94-haplotype run
+            # dilutes it to about 2% and the effect shrinks, though its direction does not change.)
+            #
+            # Treat the column as an ordering of one molecule's pcc candidates. The calibrated
+            # per-molecule null is `--logp` in local_align_pipeline.py; see METHODS.md section 6.
             combined_df['log(P)'] = stats.norm.logsf(z_scores) / np.log(10)
 
             # For maligner rows, display the maligner m-score in the 'log(P)' (shown as "score") column

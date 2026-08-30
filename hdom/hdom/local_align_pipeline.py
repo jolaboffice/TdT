@@ -299,6 +299,23 @@ def paf_homolog(l1, l2, tol_edge=20000, tol_map=50000):
         if abs(mapped_t - tpos) <= tol_map: return True
     return False
 def null_logp(scores):
+    """log10 P from a normal fitted to `scores`, the score being converted included.
+
+    Two caveats, both deliberate and both worth knowing before the column is read as a probability.
+
+    The population is the candidate list, so the score being converted is INSIDE the sample its own
+    mean and sd come from. With three to six candidates per molecule that is not a null in the usual
+    sense; it reports how far rank 1 stands out from the others, rewritten on a log scale.
+
+    The conversion fits a normal by moment matching and reads its upper tail (base 10), as in
+    logp_null.py -- but here without even a 5000-draw null behind the two estimates. The tail is not
+    itself fitted, so this is not "tail extrapolation" in the extreme-value sense. Use the column to
+    order candidates, not as a calibrated p-value. The proper per-molecule null is `--logp`
+    (logp_null.py), which replaces this for local rows; see METHODS.md section 6.
+
+    sd falls back to 1.0 when every candidate scores the same (logp_null.py uses 1e-9 for its own
+    guard; the two differ, which only matters in that degenerate case).
+    """
     mu = float(np.mean(scores)); sd = float(np.std(scores)) or 1.0
     return lambda s: f'{float(stats.norm.logsf((s-mu)/sd))/np.log(10):.2f}'
 

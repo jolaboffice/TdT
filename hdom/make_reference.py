@@ -133,6 +133,12 @@ def maps_row(name, g8, bpp):
     against are the same sites the pcc stage correlates against.
     """
     g = g8.astype(np.float64).copy()
+    # Green floor: drop anything below 10% of the way from the mean to the maximum, so find_peaks
+    # does not return the smoothing shoulders around a real site. The 0.1 is inherited, not derived
+    # -- it has no measurement behind it and was never tuned. It is repeated verbatim in DOM_lib.py,
+    # DOM_lib_Y.py, DOM_lib_Q.py and hDOM_calc_Q.py (three times each), and changing it here without
+    # changing them would put genome.maps out of step with the profiles the pcc stage correlates
+    # against. See METHODS.md section 7.
     g[g < g.mean() + (g.max() - g.mean()) * 0.1] = 0
     peaks, _ = signal.find_peaks(g)
     total = g8.size * bpp
