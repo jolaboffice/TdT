@@ -175,11 +175,75 @@ surviving labels gets no trimmed pass and reports its full-label row.
 ## 6. Null model (h-score)
 
 Optional (`--logp`). For each molecule, `K = 5000` decoy windows are drawn from every chromosome
-*except* the one the molecule matched, each scored by the same `cc_r^loc × F1`. The observed
-score is converted to a z-score against that distribution and then to `log₁₀ P`, corrected for
-the number of independent windows a genome of this size offers a molecule of this length. More
-negative is more significant. A reference holding only the matched chromosome has no population
-to draw from and reports `nodecoy`.
+*except* the one the molecule matched (both haplotypes of that chromosome are excluded), each
+scored by the same `cc_r^loc × F1` with the same freedom over the scale grid and both directions.
+The draw is seeded from `md5(molecule name)`, so a re-run reproduces the same null. A reference
+holding only the matched chromosome has no population to draw from and reports `nodecoy`.
+
+The observed score becomes a p-value **parametrically, not by counting**. A normal distribution
+is fitted to the null by moment matching, and `log₁₀ P` is read from its upper tail. With
+`S = cc_r^loc × F1` and `S₁ … S_K` the decoy scores:
+
+```
+μ̂       = (1/K) Σ Sₖ                     # np.mean
+σ̂       = sqrt( (1/K) Σ (Sₖ − μ̂)² )      # np.std, i.e. divisor K, not K−1
+z       = (S_obs − μ̂) / σ̂
+log₁₀ P = log₁₀(1 − Φ(z))                # scipy.stats.norm.logsf(z) / ln(10)
+log₁₀ E = log₁₀ P + log₁₀ N              # N = (total reference bp) / (molecule bp)
+```
+
+The hats matter: `μ̂` and `σ̂` are estimates from a finite Monte Carlo sample, not known
+parameters. The 5000 draws supply those two numbers and nothing else. The empirical shape of the
+null is discarded and no exceedance count is formed, so there is no zero-count case to handle.
+`h_score` is the per-position `log₁₀ P`; `log₁₀ E` goes to the sidecar beside it. More negative is
+more significant. `N` counts *non-overlapping* windows of the molecule's own length, while the
+search tries every offset, so `log₁₀ E` understates the multiple-testing burden rather than
+matching it.
+
+**Note what this is not.** The tail is never fitted. It is implied by two moments taken over the
+whole null, so the bulk of the distribution — where 99% of the mass sits — dictates the shape far
+to the right. This is *not* tail extrapolation in the extreme-value sense (peaks-over-threshold
+with a generalised Pareto fit, or block maxima with a GEV fit), and it should not be described as
+such: those methods estimate the tail's own shape from the data and are easier to defend than
+what is done here.
+
+**The reported values lie far outside what 5000 draws can establish.** An empirical p-value from
+`K` draws cannot go below `1/(K+1)`, i.e. `log₁₀ P = −3.70`, and the pipeline routinely reports
+values well past it. Counting is not a usable alternative: over 6,392 molecules the real
+placement outscores **every one** of its 5000 decoys in **97.8%** of cases, so the empirical
+estimate collapses to the same `< 1/5001` for almost every molecule and cannot order them. The
+fitted tail exists to recover that ordering. Observed `z` runs 3.39 to 9.34 over the 5–95% range
+(median 5.97, maximum 29.91).
+
+Sample size is not the limiting factor. Bootstrapping one null (A004, 4000 resamples) gives `μ̂`
+to 0.40% and `σ̂` to 1.84%, and a 95% interval on `log₁₀ P` of [−24.91, −21.87], about ±1.5 on a
+value of −23.28. That amplification is expected: for large `z` the normal tail behaves as
+`log₁₀ P ≈ −z²/(2 ln 10)` while `z ∝ 1/σ̂`, so a relative error in `σ̂` enters `log₁₀ P` roughly
+doubled. Raising `K` shrinks it slowly and does not touch the real problem — `K = 1000` gives
+±1.9, `K = 5000` ±0.9, `K = 20000` ±0.4 by the same linearisation, while the error from assuming
+normality at all is far larger (below).
+
+The normal assumption does not hold, and the direction of the error is known:
+
+| check | result |
+|---|---|
+| null's own maximum, in `z` | median **2.82** (5–95%: 2.17–4.11) |
+| where a normal sample of 5000 would put it | ≈ **3.54** |
+| molecules whose null maximum falls below that | **85.0%** (n = 6,392) |
+| generalised Pareto fit to one null (A004, threshold `q0.90`) | shape **ξ = −0.17** |
+| — fitted right endpoint vs the observed score | **0.323** vs **0.653** |
+
+The upper tail is **thinner** than normal, with a finite right endpoint. The fitted normal
+therefore assigns *more* probability far to the right than the data support, so the reported
+`log₁₀ P` is conservative rather than optimistic. Read it as a separation statistic that orders
+candidates on a log scale; read it as a calibrated probability only as far as the normal
+assumption is granted. (The generalised Pareto fit in the table is a **check** on that assumption,
+not the reported method: under it the observed score falls outside the fitted support entirely and
+`log₁₀ P` goes to −∞, which is a bound rather than a value.)
+
+The `sv_confidence` tool, by contrast, computes a genuinely empirical p-value with the add-one
+correction, `(1 + #{null ≥ obs}) / (1 + n)` (`null_cross.py`), because its observed statistics
+fall inside the null's range and counting works there.
 
 ---
 
@@ -202,6 +266,11 @@ isolated site therefore prints a 9-pixel footprint `[7, 21, 63, 127, 162, 127, 6
 `genome.maps` is that green channel reduced to inter-site fragment lengths: the profile is
 thresholded at `mean + 0.1·(max − mean)`, `find_peaks` gives the sites, and the line is
 `name <TAB> length_bp <TAB> n_fragments <TAB> frag1 <TAB> …`.
+
+That `0.1` is inherited rather than derived. It has no measurement behind it, was never tuned,
+and is written out verbatim in five files (`make_reference.py`, and three times each in
+`DOM_lib.py`, `DOM_lib_Y.py`, `DOM_lib_Q.py` and `hDOM_calc_Q.py`). Changing it in one place
+only would put `genome.maps` out of step with the profiles the pcc stage correlates against.
 
 Default motif `CTCGTG` (Nb.BssSI). Two references built with even slightly different parameters
 disagree about which homologue a molecule came from, so a rebuild must be checked against the
@@ -249,6 +318,36 @@ all of its whole-molecule correlation. For the re-ranked pick the same two-level
 - **Detection threshold is fixed at 0.5.** On a molecule whose green background sits at 28% of
   its peak, ten candidates at 1.3–1.9× background pass at probabilities 0.50–0.75 while the
   twelve real labels score 0.99–1.00. The model separates them; the threshold does not.
+- **`log₁₀ P` comes from a fitted normal, not from counting.** §6 gives the formula, the log
+  base, and the measured direction of the error. The tail is not itself fitted, so the phrase
+  "tail extrapolation" (which names a different, better-supported technique) does not apply. The
+  same `norm.logsf` conversion is
+  applied to three other score columns, and in all three the observation lies *inside* the
+  population its own mean and sd are taken from: `pcc` (`hDOM_calc_Q.py`) and `local`/`mDOM` when
+  `--logp` is not given (`null_logp` in `local_align_pipeline.py`, calibrated on that molecule's
+  own three-to-six candidate scores). Those three order candidates within one molecule; they are
+  not calibrated probabilities. Only `--logp` puts the observation outside its null.
+- **The `pcc` column's null is neither decoy-only nor a sample of wrong positions.** Unlike
+  `--logp`, `hDOM_calc_Q.py` excludes no chromosome: the matched chromosome and its homologue are
+  in the population, and the score being converted is that population's maximum. Each element is
+  one `(reference, scale)` pair already maximised over every shift and both directions, so the
+  distribution is one of per-chromosome maxima rather than of wrong answers. Removing the matched
+  chromosome and recomputing, over 20 runs (10 molecules, raw and straightened), inflates `sd` in
+  18 of 20 (median 1.08×, max 1.94×), i.e. self-inclusion pulls `log₁₀ P` toward zero and is
+  conservative — but by an amount that grows with match quality:
+
+  | molecule | rank 1 | as computed | matched chr removed | `sd` ratio |
+  |---|---|---|---|---|
+  | `0316…mol001_135kb` | chr01_m | −23.73 | −77.52 | 1.82× |
+  | `0327…mol006` | chr08_m | −6.60 | −23.53 | 1.94× |
+  | `0315…mol003_176kb` | chr06_m | −7.71 | −12.09 | 1.26× |
+  | `0128_Re5_37_38_2` | chr09_m | −3.34 | −3.62 | 1.04× |
+
+  Confident molecules inflate their own `sd` and dock themselves several-fold in log units while
+  weak ones near −3 barely move, so the column is **not comparable across molecules**. Those runs
+  used 17–30 references, where the matched chromosome is 2–14% of the population; a full
+  94-haplotype run dilutes it to about 2% and shrinks the effect without changing its direction.
+  `cc_rg2 = cc_r · cc_g²` compounds this, `cc_g` being a cosine taken without mean subtraction.
 - **A GPU is required.** The pcc scan runs through CuPy and exits without it.
 - **One sample, one enzyme, one instrument.** Everything here is HG002 with Nb.BssSI at
   200 bp/pixel.
