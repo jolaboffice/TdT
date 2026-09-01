@@ -94,6 +94,11 @@ cc_rg2 = cc_r · cc_g²
 so the label channel enters quadratically. This matters for interpretation: pcc is not a
 red-only scorer, and the green term is what keeps many low-frequency red matches from winning.
 
+`cc_rg2`, and the dual-channel scheme it scores — a sequence-specific label channel read together
+with an A/T density profile — are from the DOM method this pipeline builds on:
+
+> Jo K et al., *DOM: Dual Optical Mapping Integrating Sequence-Specific Barcodes and A/T Density Profiles*, Small Methods, 2026. doi:10.1002/smtd.70883
+
 **maligner.** `maligner_dp` aligns the molecule's inter-label fragment lengths against
 `genome.maps`:
 
@@ -247,6 +252,45 @@ fall inside the null's range and counting works there.
 
 ---
 
+## 6b. Image quality checks
+
+Two per-molecule checks (`hdom/qc.py`), written to `{base}_qc.json` and turned into a banner on
+the molecule's page. Neither looks at the alignment. They ask whether the image could support one,
+which the alignment score cannot answer: a molecule whose labels sit barely above their own
+background still produces a rank 1.
+
+```
+green_snr    median(height of detected green peaks) / median(green profile)     fail < 2.5
+red_medroll  per-column backbone width -> std over a rolling ±30-column window
+             -> median over columns                                            fail > 0.33
+             (None, also a failure, when fewer than 70 columns are bright
+              enough to trace: too short or too broken to measure)
+```
+
+`green_snr` is a ratio, not `(signal − background) / noise`. `red_medroll` is large when the
+stained backbone thickens and thins along its length.
+
+Nothing is filtered by default: the sidecar is written, a warning is printed, and the molecule is
+aligned and displayed as usual. `--qc-filter` moves failures to `<output>/qc_failed/` instead.
+
+The thresholds are empirical, set by looking at molecules already judged by eye rather than
+derived, so they are a boundary drawn around known-good data. What they catch well is data that
+does not resemble it:
+
+| set | molecules | failed |
+|---|---|---|
+| this study (groups A, AR, B, C+, XY) | 3,079 | **8 (0.3%)** |
+| a set imaged with an unoptimised green fluorophore | 39 | **37 (94.9%)** |
+
+Here `green_snr` has median 6.6 and 5th percentile 3.4; there it clusters at 1.2–1.8, i.e. label
+peaks only 30–80% brighter than their own background, at which point no height threshold separates
+labels from background bumps and label detection over-reports several-fold. `red_medroll` failed
+nothing in that set, so the checks also say *which* channel is at fault. On this study's data the
+checks change nothing, which is the point of reporting both numbers: they exist to tell a new user
+whether the pipeline is being applied to the kind of image it was built for.
+
+---
+
 ## 7. Reference construction
 
 At `bpp` bases per pixel and `n = ceil(len(seq)/bpp)` pixels, from `numpy.histogram` with edges
@@ -279,6 +323,37 @@ reference the results were produced with.
 ---
 
 ## 8. What has been measured
+
+The groups the numbers below are broken down by. A molecule is assigned by what its top two
+candidates are, not by how well it scored:
+
+| group | meaning |
+|---|---|
+| **A** | rank 1 and rank 2 are the two haplotypes of one chromosome, and maligner agrees with one of them |
+| **B** | the same, but maligner disagrees or returned nothing |
+| **XY** | rank 1 is a sex chromosome |
+| **AR** | rank 1 and rank 2 are *different* acrocentric chromosomes, and rank 1 falls inside an acrocentric-specific region |
+
+**AR** exists because the short arms of chromosomes 13, 14, 15, 21 and 22 share sequence between
+*non-homologous* chromosomes, so a molecule from one of them has no unique locus to be assigned
+to. The region is the union of the pseudo-homologous regions (PHRs) described by Guarracino et
+al., the acrocentric α-satellite composite, and rDNA:
+
+> Guarracino A, Buonaiuto S, de Lima LG, Potapova T, Rhie A, Koren S, Rubinstein B, Fischer C,
+> Gerton JL, Phillippy AM, Colonna V, Garrison E and the Human Pangenome Reference Consortium,
+> *Recombination between heterologous human acrocentric chromosomes*, Nature 617(7960):335–343,
+> 2023. doi:10.1038/s41586-023-05976-y
+
+PHR coordinates were obtained by aligning that paper's CHM13 sequences to HG002 with minimap2.
+The union spans **43.1 Mb, 0.72%** of the 6.0 Gb diploid genome (PHR 0.663%, α-satellite
+composite 0.055%, rDNA 0.041%, mostly inside the PHRs). Pan-genomic satellites (HSat1A/1B, bSat,
+SST1) are excluded because they also occur on chromosomes 3, 4, 8 and Y and so are not
+acrocentric-specific; defining AR by the whole short arm instead would cover 138.6 Mb (2.31%),
+which does not match the published PHR extent. As a check, 24 of 3,166 molecules (0.95%) have
+rank 1 inside the region against the 0.72% the genome fraction predicts, within Poisson 1.5σ.
+
+The AR assignment itself is made by the classification tooling on the analysis server and is not
+part of this package.
 
 On the 3,148-molecule set:
 

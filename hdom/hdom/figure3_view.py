@@ -2,14 +2,16 @@
 rank1/2 + mal1/2 panels) into a pipeline output folder, and build the _lengths.json the
 viewer needs. Used by local_align_pipeline.py (standard) and straighten_align.py (linearized).
 
-The viewer template `figure3_index.php` is the generic form of zave/Figure3/index.php
-(length relabel gated on _lengths.json existence, not on folder name).
+The viewer template is `index.php` in this directory, the single released copy. There used to be
+a second one here (`figure3_index.php`) which this module copied instead, so a run could ship a
+viewer older than the one in the repository -- which is how output folders ended up without the
+QC banner and with the pre-0.9x table row height. There is now one file and one copy of it.
 mdom/pcc/homolog rows stay in the CSV (kept for later use); the viewer just shows local+mal.
 """
 import os, json, shutil, fcntl
 
 CODE = os.path.dirname(os.path.abspath(__file__))
-VIEWER_SRC = os.path.join(CODE, 'figure3_index.php')
+VIEWER_SRC = os.path.join(CODE, 'index.php')
 
 
 def deploy_viewer(folder):

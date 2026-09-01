@@ -26,7 +26,10 @@ def test_layout():
                 'hdom/straighten_align.py', 'hdom/local_align_pipeline.py',
                 'hdom/mdom_reanchor.py', 'hdom/hDOM_view.py',
                 'hdom/Label_Detect_ML_based.py', 'hdom/label_model.joblib',
-                'hdom/figure3_view.py', 'hdom/figure3_index.php'):
+                'hdom/figure3_view.py', 'hdom/qc.py',
+                # One viewer, not two. figure3_view.py copies this file into every output
+                # folder, so a second copy here would ship runs a viewer older than the repo.
+                'hdom/index.php'):
         assert os.path.exists(os.path.join(ROOT, rel)), f'missing {rel}'
 
 

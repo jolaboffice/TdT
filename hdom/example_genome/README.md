@@ -1,5 +1,8 @@
 # Genome-wide example
 
+The three molecules are named `A`, `B` and `C`. They are real HG002 molecules; the experiment
+names they were collected under are kept in the `_provenance` block of `expected.json`.
+
 The same three molecules as `example/`, searched against the whole HG002 reference — 47 chromosome
 maps, both haplotypes — instead of the two chromosome 20 maps bundled with the package.
 
@@ -9,9 +12,9 @@ does not depend on having narrowed the search first.
 
 ## The reference map is not in this repository
 
-47 chromosome maps are 862 MB, more than a repository should hold. Download
-`hDOM_reference_map_HG002v11.zip` from the Zenodo record (DOI in the top-level README), unzip it,
-and point `--ref-map` at the folder it produces.
+47 chromosome maps are about 900 MB unzipped, more than a repository should hold. Download
+`hDOM_reference_map_HG002v11.zip` (330 MB) from the reference-map Zenodo record, whose DOI is in
+the top-level README, unzip it, and point `--ref-map` at the folder it produces.
 
 ## Running it
 

@@ -4,25 +4,30 @@
   "local1_bp": 2000,
   "local1_F1": 0.03
  },
- "0225_5ng_16_17": {
+ "A": {
   "local1_ref": "chr20_m",
   "local1_bp": 44743800,
   "local1_F1": 0.97,
   "local2_ref": "chr20_p",
   "n_labels": 21
  },
- "0317_HG002_NbBssSI_TdT_2_merged_t051_t052_mol001_147kb": {
+ "B": {
   "local1_ref": "chr20_p",
   "local1_bp": 25657800,
   "local1_F1": 0.97,
   "local2_ref": "chr20_m",
   "n_labels": 20
  },
- "0318_HG002_NbBssSI_TdT_3_merged_t010_t011_mol001_243kb": {
+ "C": {
   "local1_ref": "chr20_m",
   "local1_bp": 41485400,
   "local1_F1": 0.89,
   "local2_ref": "chr20_p",
   "n_labels": 15
+ },
+ "_provenance": {
+  "A": "0225_5ng_16_17",
+  "B": "0317_HG002_NbBssSI_TdT_2_merged_t051_t052_mol001_147kb",
+  "C": "0318_HG002_NbBssSI_TdT_3_merged_t010_t011_mol001_243kb"
  }
 }

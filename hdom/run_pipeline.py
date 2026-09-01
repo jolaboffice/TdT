@@ -61,6 +61,9 @@ def main():
                     help='also compute the K=5000 random-null log(P) (h_score) per molecule')
     ap.add_argument('--chains', default='', help='optional minimap2 haplotype PAF dir (homolog panel)')
     ap.add_argument('--keep-staged', action='store_true', help='keep the normalised input folder')
+    ap.add_argument('--qc-filter', action='store_true',
+                    help='move molecules that fail the image checks into <output>/qc_failed/ '
+                         '(default: keep them, write the sidecar, and warn)')
     a = ap.parse_args()
 
     if not shutil.which('maligner_dp'):
@@ -143,6 +146,42 @@ def main():
     done = len(glob.glob(os.path.join(a.output, '*_view.html')))
     if not a.keep_staged:
         shutil.rmtree(staged, ignore_errors=True)
+
+    # Image quality checks. These do not look at the alignment and never change it; they ask whether
+    # the image could support one. A molecule whose green labels sit barely above their own
+    # background still produces a rank 1, and no alignment score reports that. Results go to
+    # {base}_qc.json, which the viewer turns into a banner.
+    sys.path.insert(0, PKG)
+    try:
+        import qc
+    except Exception as e:
+        print(f'  [qc] skipped ({type(e).__name__}: {e})', flush=True)
+    else:
+        failed = []
+        for tif in sorted(glob.glob(os.path.join(a.output, '*_orig.tif'))):
+            b = os.path.basename(tif)[:-len('_orig.tif')]
+            try:
+                q = qc.write_sidecar(tif, base=b)
+            except Exception as e:
+                print(f'  [qc] {b}: {type(e).__name__}: {e}', flush=True); continue
+            if not q['pass']:
+                failed.append((b, q))
+        if failed:
+            print(f'\n  image quality: {len(failed)}/{done} molecule(s) failed a check')
+            for b, q in failed:
+                for r in q['reasons']:
+                    print(f'    {b}: {r}')
+            if a.qc_filter:
+                qd = os.path.join(a.output, 'qc_failed'); os.makedirs(qd, exist_ok=True)
+                for b, _ in failed:
+                    for f in glob.glob(os.path.join(a.output, b + '*')):
+                        if os.path.isfile(f):
+                            shutil.move(f, os.path.join(qd, os.path.basename(f)))
+                print(f'  --qc-filter: moved to {qd}')
+            else:
+                print('  kept in place and shown with a warning banner; '
+                      'pass --qc-filter to move them aside instead')
+
     print(f'\ndone: {done}/{n} molecules -> {a.output}')
     if done < n:
         print(f'  {n - done} produced no result (no ML label detected, or backbone trace failed)')

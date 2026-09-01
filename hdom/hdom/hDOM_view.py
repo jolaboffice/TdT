@@ -20,6 +20,7 @@ import sys
 import re
 import argparse
 import json
+import html
 import pandas as pd
 import numpy as np
 
@@ -426,6 +427,50 @@ def _nav_style():
 
 
 CLASS_LIST = ['S', 'A', 'B', 'C', 'D', 'M', 'F']
+
+
+def _qc_banner_html(qc_json_path):
+    """Warning block for a molecule whose image failed a quality check, or '' if it passed.
+
+    Read from the `{base}_qc.json` written by qc.py rather than recomputed, so the page states
+    exactly what the pipeline recorded. Baked into the HTML rather than added by the PHP index, so
+    the warning survives being opened as a plain file, which is how the released package is used.
+    The `data-qc-banner` attribute is what the PHP index looks for before adding its own.
+    """
+    if not qc_json_path or not os.path.isfile(qc_json_path):
+        return ''
+    try:
+        with open(qc_json_path, encoding='utf-8') as fh:
+            q = json.load(fh)
+    except Exception:
+        return ''
+    if not isinstance(q, dict) or q.get('pass', True):
+        return ''
+    med = q.get('red_medroll')
+    med_s = 'untraceable' if med is None else f'{float(med):.3f}'
+
+    def chip(label, value, bad):
+        return (f'<span style="display:inline-block;margin-right:14px;padding:2px 9px;'
+                f'border-radius:4px;background:{"#c0392b" if bad else "#7f8c8d"};color:#fff;'
+                f'font-weight:bold">{label} {value}</span>')
+
+    reasons = ''.join(f'<li>{html.escape(str(r))}</li>' for r in q.get('reasons', []))
+    return (
+        '<div data-qc-banner style="margin:10px 0;padding:12px 16px;border:1px solid #e0b400;'
+        'border-left:6px solid #e0b400;border-radius:5px;background:#fff8e1;color:#5a4500;'
+        "font:14px 'Segoe UI',Tahoma,sans-serif;line-height:1.5\">"
+        '<div style="font-weight:bold;font-size:15px;margin-bottom:6px">'
+        'Image quality check failed: read this alignment with caution</div>'
+        '<div style="margin-bottom:7px">'
+        + chip('green SNR', f'{float(q.get("green_snr", 0)):.2f}', bool(q.get('fail_green')))
+        + chip('red medRoll', med_s, bool(q.get('fail_red')))
+        + f'<span style="color:#7a6a30;font-size:12.5px">thresholds: green SNR &ge; '
+          f'{q.get("green_snr_min", 2.5)}, red medRoll &le; {q.get("red_medroll_max", 0.33)}</span></div>'
+        f'<ul style="margin:0 0 7px 20px;padding:0">{reasons}</ul>'
+        '<div style="font-size:12.5px;color:#7a6a30">These checks look at the image only, not at the '
+        'alignment. The result below was still computed and is shown unchanged; the alignment score '
+        'cannot tell you that the labels it ranked on were mostly background.</div></div>'
+    )
 
 
 def _build_class_toolbar():
@@ -1132,6 +1177,8 @@ def tif2view_html(tif_path, mol_index, total_mols, prev_html, next_html,
         {nav_html}
         <p><strong>File:</strong> {os.path.basename(tif_path)} ({molecule_length_bp / 1000:.1f} kbp)
            &nbsp;&nbsp;<a class="index-link" href="index.php">&#9776; Index</a></p>
+        {_qc_banner_html(os.path.join(os.path.dirname(os.path.abspath(tif_path)),
+                                      os.path.basename(tif_path).rsplit('.', 1)[0].removesuffix('_orig') + '_qc.json'))}
         {_build_class_toolbar()}
         {green_profile_html}
         {comp_html}

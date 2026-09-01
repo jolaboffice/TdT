@@ -15,6 +15,15 @@ them depend on the third and all of them need the same aligner.
 This repository is GPL v3. It bundles maligner, which is GPL v3, and `sem_length` imports its
 Python library directly, so a permissive licence would not have been honest here.
 
+## Citing
+
+The dual-channel mapping this pipeline implements, including the `cc_rg2 = cc_r · cc_g²`
+candidate score, is from:
+
+> Jo K et al., *DOM: Dual Optical Mapping Integrating Sequence-Specific Barcodes and A/T Density Profiles*, Small Methods, 2026. doi:10.1002/smtd.70883
+
+Please cite that paper alongside this software.
+
 `maligner/` carries its own `LICENSE` and belongs to its authors:
 Mendelowitz L, Schatz MC et al., *Maligner: a fast ordered restriction map aligner*,
 Bioinformatics 32(7):1016-1022, 2016. https://github.com/LeeMendelowitz/maligner
@@ -55,5 +64,11 @@ molecules are the same three, so running both answers one question: does the ans
 having narrowed the search first. It does not — chromosome, haplotype, locus, F1 and the runner-up
 haplotype come out identical.
 
-The 47 reference maps are 862 MB and are not in this repository. They are published with the
-source in the Zenodo record; see `hdom/example_genome/README.md`.
+The 47 reference maps are not in this repository: 330 MB to download, about 900 MB unzipped. They
+are deposited as their own Zenodo record, separate from this software, because they are data
+derived from a public assembly rather than part of the program:
+
+**hDOM reference map for HG002 v1.1 (Nb.BssSI, 200 bp/pixel)**
+<https://doi.org/10.5281/zenodo.22121923>
+
+`hdom/example_genome/README.md` shows how to unpack and use them.
