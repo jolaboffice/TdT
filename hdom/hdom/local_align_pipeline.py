@@ -175,6 +175,32 @@ def ref_peaks(ref):
         _refpk[ref] = R.ref_green_peaks(f'{REFMAP}/{ref}.tif')
     return _refpk[ref]
 
+
+TRIM_RULE = os.environ.get('HDOM_TRIM_RULE', 'window')
+def terminal_cuts(dp, w2, trim):
+    """How much to cut at each end, in molecule pixels.
+
+    'window' (the original) cuts the whole terminal `trim`. 'outermost' cuts just past the single
+    outermost label at each end, so a second terminal label -- which the fixed window also removed,
+    though it is a real site -- keeps its say. A clamped end is exempt and keeps the full cut: two
+    labels on one pixel, or two on the image edge, are the arc-length resampling artefact the trim
+    exists for, not evidence.
+
+    Returns (cut_left, cut_right); both default to `trim`, so callers are unchanged under 'window'.
+    """
+    if TRIM_RULE != 'outermost' or trim <= 0:
+        return trim, trim
+    L = [float(x) for x in dp if x < trim]
+    Rr = [float(x) for x in dp if x > w2 - 1 - trim]
+    def keep_full(side, edge):
+        if len(side) < 2: return True
+        q = [int(round(v)) for v in side]
+        if len(q) != len(set(q)): return True                     # 같은 픽셀 = clamp
+        return sum(1 for v in q if abs(v - edge) <= 1) >= 2
+    tl = trim if keep_full(L, 0) else int(min(L)) + 1
+    tr = trim if keep_full(Rr, w2 - 1) else int(w2 - 1 - max(Rr)) + 1
+    return tl, tr
+
 def _mapped_ref(ref_prof, MOL, aligned_bp, scale, direction):
     """The reference resampled onto the molecule's pixel grid at a given placement.
 
@@ -412,7 +438,9 @@ def rerank(tif, csvp):
 
     def f1_gen(ref, ab, di, sc, trim):
         rp, rl = ref_peaks(ref)
-        M, FP, FN, f1 = R.label_f1(dp, w2, rp.astype(float), rl, ab, di, sc, trim_px=trim)
+        _tl, _tr = terminal_cuts(dp, w2, trim)
+        M, FP, FN, f1 = R.label_f1(dp, w2, rp.astype(float), rl, ab, di, sc,
+                                   trim_px=trim, trim_l=_tl, trim_r=_tr)
         return (0.0 if (f1 is None or np.isnan(f1)) else float(f1)), (int(FP) if not np.isnan(FP) else 0)
     def f1_at(ref, ab, di, sc):        # local uses green-only 5 kb trim
         return f1_gen(ref, ab, di, sc, TRIM_PX)

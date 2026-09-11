@@ -77,7 +77,9 @@ def label_f1_fast(dp, w2, pk_sorted, rl, aligned_bp, direction, scale, trim_px):
     win_lo, win_hi = shift_px, shift_px + scale * w2
     a = np.searchsorted(pk_sorted, win_lo - R.TOL_PX - scale * trim_px - 1)
     b = np.searchsorted(pk_sorted, win_hi + R.TOL_PX + scale * trim_px + 1)
-    return R.label_f1(dp, w2, pk_sorted[a:b], rl, aligned_bp, direction, scale, trim_px=trim_px)
+    tl, tr = LP.terminal_cuts(dp, w2)
+    return R.label_f1(dp, w2, pk_sorted[a:b], rl, aligned_bp, direction, scale, trim_px=trim_px,
+                      trim_l=tl, trim_r=tr)
 
 
 def prep(M, use_gpu=True):

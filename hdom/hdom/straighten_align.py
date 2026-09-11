@@ -74,13 +74,9 @@ def backbone(red, win=4, reacq=20, maxstep=None, min_run=10):
 
     With maxstep set (the BBFIX pass, see chosen_backbone), a column whose centroid sits more than
     maxstep rows from the previous column is dropped instead of accepted: a DNA backbone in these
-    crops drifts 0.004 px per column net (median over 59 molecules, at most 0.034), so a 2 px step
-    means the tracer left the strand for a nearby speck and would otherwise drag the straightened
-    image into a false hump. maxstep=None reproduces the original trace exactly.
-
-    This is not safe to apply everywhere: the largest single-column step of an ordinary trace is
-    itself about 2 px (median 2.09 px over those molecules), so maxstep=2.0 also rejects legitimate
-    columns. chosen_backbone gates it on a test made after straightening; see METHODS.md section 2.
+    crops rises 0.02-0.04 px per column, so a 2 px step means the tracer left the strand for a
+    nearby speck and would otherwise drag the straightened image into a false hump. maxstep=None
+    reproduces the original trace exactly.
 
     Returns one y per column, NaN where the strand was never acquired.
     """
@@ -333,7 +329,10 @@ for k in mine:
     # second, reported maligner pass in [2b] and for the white-circle marking in the view.
     # Under 2 survivors there is no alignable map, so that molecule gets no trimmed pass at all.
     w2 = wp.shape[-1]
-    kept[k] = [p for p in CACHE[k] if TRIM_PX <= p <= w2 - 1 - TRIM_PX]
+    # 보고용 maligner 도 F1 과 같은 말단 규칙을 쓴다. 규칙이 갈리면 뷰의 mal 행과 local 행이
+    # 서로 다른 표지셋으로 계산되어 같은 분자를 다르게 설명하게 된다.
+    _tl, _tr = P.terminal_cuts(np.asarray(CACHE[k], float), w2, TRIM_PX)
+    kept[k] = [p for p in CACHE[k] if _tl <= p <= w2 - 1 - _tr]
     removed[k] = sorted(set(CACHE[k]) - set(kept[k])) if len(kept[k]) >= 2 else []
     rawmol[k] = a; staged.append(k)
   except Exception as e:
@@ -352,7 +351,7 @@ _hold = f'{ST}/_display'
 os.makedirs(_hold, exist_ok=True)
 for _f in glob.glob(f'{ST}/*_orig.tif'):
     shutil.move(_f, os.path.join(_hold, os.path.basename(_f)))
-subprocess.run(['python3', CALC, ST, '--ref-map', P.REFMAP, '--bpp', str(BPP)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+subprocess.run(['python3', CALC, ST, '--ref-map', P.REFMAP, '--bpp', str(BPP)], check=False)
 for _f in glob.glob(f'{_hold}/*_orig.tif'):
     shutil.move(_f, os.path.join(ST, os.path.basename(_f)))
 shutil.rmtree(_hold, ignore_errors=True)

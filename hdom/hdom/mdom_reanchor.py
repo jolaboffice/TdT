@@ -57,7 +57,8 @@ def ref_green_peaks(ref_file):
     return _ref_cache[ref_file]
 
 
-def label_f1(data_peaks_px, w2, ref_peaks_px, ref_len, aligned_bp, direction, scale, trim_px=0):
+def label_f1(data_peaks_px, w2, ref_peaks_px, ref_len, aligned_bp, direction, scale, trim_px=0,
+             trim_l=None, trim_r=None):
     """Label agreement at one placement: returns (matched, FP, FN, F1).
 
     The molecule's label positions are mapped into reference pixels at the given alignment --
@@ -89,8 +90,15 @@ def label_f1(data_peaks_px, w2, ref_peaks_px, ref_len, aligned_bp, direction, sc
         mapped = shift_px + s * (w2 - 1 - data_peaks_px)
     win_lo, win_hi = shift_px, shift_px + s * w2
     _trim_ok = False
-    if trim_px and trim_px > 0 and (w2 - 2 * trim_px) > 0:
-        lo_d, hi_d = trim_px, w2 - 1 - trim_px
+    # trim_l / trim_r: asymmetric terminal cuts. The fixed trim_px drops every label in the
+    # terminal window; the outermost-only rule instead cuts just past the single outermost label
+    # at each end, so a second, genuine terminal label keeps its say. Both molecule labels and
+    # reference sites are cut on the same window either way, or the reference is charged FN for
+    # sites the molecule was never allowed to match.
+    _tl = trim_px if trim_l is None else trim_l
+    _tr = trim_px if trim_r is None else trim_r
+    if (_tl > 0 or _tr > 0) and (w2 - _tl - _tr) > 0:
+        lo_d, hi_d = _tl, w2 - 1 - _tr
         mp = mapped[(data_peaks_px >= lo_d) & (data_peaks_px <= hi_d)]
         ref_dpx = (w2 - 1 - (ref_peaks_px - shift_px) / s) if direction == -1 else (ref_peaks_px - shift_px) / s
         rp = ref_peaks_px[(ref_dpx >= lo_d) & (ref_dpx <= hi_d)]

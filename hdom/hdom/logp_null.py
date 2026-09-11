@@ -125,6 +125,25 @@ def local_ccr_vec(M, ref_prof, aligned_bp, scale, direction):
     return float(best[fm].mean()) if fm.any() else np.nan
 
 
+_CUT_CACHE = {}
+
+
+def terminal_cuts(dp, w2):
+    """The left/right terminal cut this molecule's label set gets, cached per (dp, w2).
+
+    The null must score a decoy with exactly the label set the ranking used, so this has to be the
+    same call local_align_pipeline.f1_gen makes. Under the default HDOM_TRIM_RULE it returns
+    (TRIM, TRIM) and nothing changes; under 'outermost' it keeps every terminal label but the
+    outermost one at each end.
+    """
+    k = (len(dp), float(dp[0]) if len(dp) else 0.0, float(dp[-1]) if len(dp) else 0.0, int(w2))
+    v = _CUT_CACHE.get(k)
+    if v is None:
+        v = P.terminal_cuts(np.asarray(dp, float), w2, TRIM)
+        _CUT_CACHE[k] = v
+    return v
+
+
 def score_pos(M, dp, w2, rr, pk, rl, pos):
     """The pipeline's ranking score at one genomic position: max over scale and direction of
     local cc_r x label F1.
@@ -138,7 +157,9 @@ def score_pos(M, dp, w2, rr, pk, rl, pos):
             lc = local_ccr_vec(M, rr, pos, sc, d)
             if np.isnan(lc):
                 continue
-            _, _, _, f1 = R.label_f1(dp, w2, pk, rl, pos, d, sc, trim_px=TRIM)
+            _tl, _tr = terminal_cuts(dp, w2)
+            _, _, _, f1 = R.label_f1(dp, w2, pk, rl, pos, d, sc, trim_px=TRIM,
+                                     trim_l=_tl, trim_r=_tr)
             f1 = 0.0 if (f1 is None or (isinstance(f1, float) and np.isnan(f1))) else f1
             best = max(best, lc * (f1 if f1 else 0))
     return best
@@ -193,13 +214,8 @@ def _build_null_auto(M, dp, w2, chrs, seedb):
 
 
 def compute_logp(base, folder, dp=None, force=False):
-    """K=5000 null log_p for the local rows of folder/{base}_matching_results.csv.
-
-    Scored rows are method 'local' (the ranked candidates) and 'H_local' (the homologue row), so
-    the homologue is measured against the same null as the loci it is compared with.
-    Writes log(P) on those rows (= log_p) + folder/{base}_vsrandom.txt. Returns status.
-    force=True recomputes even when a finished sidecar exists; callers that have just rewritten
-    the CSV need it, because re-ranking leaves null_logp in the log(P) column."""
+    """K=5000 null log_p for LOCAL rows of folder/{base}_matching_results.csv.
+    Writes log(P) (local rows only, = log_p) + folder/{base}_vsrandom.txt. Returns status."""
     if not ALL:
         load_refs()
     side = f'{folder}/{base}_vsrandom.txt'
