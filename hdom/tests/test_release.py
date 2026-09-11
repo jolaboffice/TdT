@@ -107,9 +107,17 @@ def test_declared_dependencies_cover_imports():
     have them installed the omission is invisible.
     """
     import re
-    declared = {re.split(r'[<>=!\[]', l.strip())[0].lower()
-                for l in open(os.path.join(ROOT, 'requirements.txt'), encoding='utf-8')
-                if l.strip() and not l.startswith('#')}
+    # requirements-gpu.txt holds cupy, which is declared separately because the plain package
+    # is a source distribution that cannot install without CUDA. Reading both keeps this check
+    # honest about optional dependencies without putting cupy back in the default install.
+    declared = set()
+    for fn in ('requirements.txt', 'requirements-gpu.txt'):
+        path = os.path.join(ROOT, fn)
+        if not os.path.exists(path):
+            continue
+        declared |= {re.split(r'[<>=!\[]', l.strip())[0].lower()
+                     for l in open(path, encoding='utf-8')
+                     if l.strip() and not l.startswith('#')}
     declared |= {'os', 'sys', 'json', 'csv', 'glob', 'shutil', 'subprocess', 'argparse', 're',
                  'warnings', 'math', 'time', 'io', 'base64', 'collections', 'itertools', 'random',
                  'datetime', 'hashlib', 'threading', 'concurrent', 'fcntl', 'functools', 'pickle',

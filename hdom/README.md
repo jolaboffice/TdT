@@ -119,7 +119,9 @@ agreement), `log(P)` (**h_score**, null-model significance -- the headline hDOM 
   `--max-alignments-per-reference 3`), and a build that parses those flags differently would
   change which candidates reach the re-rank.
 - Python 3 with `numpy scipy pandas tifffile Pillow scikit-learn joblib numba matplotlib cupy`
-  (`pip install -r requirements.txt`, but install the CuPy wheel matching your CUDA version)
+  (`pip install -r requirements.txt`; CuPy is listed separately in `requirements-gpu.txt`
+  because the plain package builds from source, so install the wheel matching your CUDA
+  version instead, e.g. `pip install cupy-cuda12x`)
 
 ## How it works
 

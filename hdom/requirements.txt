@@ -17,5 +17,5 @@ matplotlib>=3.4
 # runtime is required for that stage. CuPy is deliberately left out of this list: the plain
 # `cupy` package on PyPI is a source distribution that fails to build without a CUDA toolkit,
 # so pinning it here would break every CPU-only checkout. Install the wheel matching your CUDA
-# version alongside this file:
+# version alongside this file, or use requirements-gpu.txt:
 #     pip install cupy-cuda12x        # or the wheel for your CUDA

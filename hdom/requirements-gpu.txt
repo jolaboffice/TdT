@@ -1,0 +1,12 @@
+# Optional GPU dependency, kept out of requirements.txt on purpose.
+#
+# The pcc scanner (hdom/candidates/hDOM_pcc_ft_Q.py) correlates the molecule against every
+# reference on the GPU, so CuPy and an NVIDIA GPU are needed for that stage; every other stage
+# runs without it, and each cupy import is guarded so the package still imports and the scanner
+# reports its own absence rather than failing at install time.
+#
+# Prefer the wheel matching your CUDA version over this file, because the plain `cupy` package
+# below is a source distribution and will try to compile against a local CUDA toolkit:
+#
+#     pip install cupy-cuda12x        # or cupy-cuda11x, etc.
+cupy

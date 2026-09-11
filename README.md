@@ -33,7 +33,7 @@ Bioinformatics 32(7):1016-1022, 2016. https://github.com/LeeMendelowitz/maligner
 Python 3.9 or later. Each tool has its own `requirements.txt`; the mapping pipeline additionally
 needs CuPy and an NVIDIA GPU, because its candidate scan runs there.
 
-    pip install -r hdom/requirements.txt        # add cupy-cuda12x or the wheel for your CUDA
+    pip install -r hdom/requirements.txt        # CPU-only; the GPU scan needs CuPy, see below
     pip install -r sv_confidence/requirements.txt
     pip install -r sem_length/requirements.txt
 
