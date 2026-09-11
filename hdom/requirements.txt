@@ -14,8 +14,7 @@ numba>=0.55
 matplotlib>=3.4
 # The pcc scanner (hdom/candidates/hDOM_pcc_ft_Q.py) correlates the molecule against every
 # reference on the GPU and exits if CuPy is unavailable, so an NVIDIA GPU with a working CUDA
-# runtime is required for that stage. CuPy is deliberately left out of this list: the plain
-# `cupy` package on PyPI is a source distribution that fails to build without a CUDA toolkit,
-# so pinning it here would break every CPU-only checkout. Install the wheel matching your CUDA
-# version alongside this file, or use requirements-gpu.txt:
+# runtime is required for that stage. CuPy is not in this list: the plain `cupy` package on PyPI
+# is a source distribution that needs a CUDA toolkit to build, so it is declared in
+# requirements-gpu.txt instead. Install the wheel matching your CUDA version alongside this file:
 #     pip install cupy-cuda12x        # or the wheel for your CUDA

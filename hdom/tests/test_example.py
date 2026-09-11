@@ -25,8 +25,8 @@ def main():
         print('SKIP: maligner_dp not on PATH')
         return 0
     # The pcc stage runs on the GPU, and hDOM_pipeline.py refuses to start without CuPy rather
-    # than quietly finishing on maligner candidates alone. That makes a GPU-less machine an
-    # environment this test cannot run in, not a regression -- the same call as maligner_dp above.
+    # than quietly finishing on maligner candidates alone, so a machine without a GPU cannot run
+    # the example at all. Same reason as maligner_dp above.
     try:
         import cupy  # noqa: F401
     except Exception:

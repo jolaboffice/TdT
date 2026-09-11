@@ -107,9 +107,9 @@ def test_declared_dependencies_cover_imports():
     have them installed the omission is invisible.
     """
     import re
-    # requirements-gpu.txt holds cupy, which is declared separately because the plain package
-    # is a source distribution that cannot install without CUDA. Reading both keeps this check
-    # honest about optional dependencies without putting cupy back in the default install.
+    # cupy sits in requirements-gpu.txt rather than requirements.txt, because the plain package
+    # is a source distribution that cannot install without CUDA. Either file counts as declaring
+    # a dependency.
     declared = set()
     for fn in ('requirements.txt', 'requirements-gpu.txt'):
         path = os.path.join(ROOT, fn)
