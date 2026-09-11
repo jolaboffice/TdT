@@ -1,34 +1,35 @@
 #!/usr/bin/env Rscript
-# maligner_dp Multi-rank strip 비교 시각화
-# Data (query) + Rank 1-10 × (smoothed ref + unsmoothed ref) strips 한 이미지
-# 각 ref 쌍에 smoothing으로 제거된 fragment 수 표기
+# maligner_dp multi-rank strip figure.
+# One image per molecule: the query, then ranks 1-10, each drawn as a smoothed and an
+# unsmoothed reference strip. Every reference pair carries the number of fragments that
+# smoothing removed.
 #
-# 사용법: Rscript maligner_multirank_strip.R <상위폴더> <smoothed_ref.maps> <unsmoothed_ref.maps>
+# Usage: Rscript maligner_multirank_strip.R <parent_dir> <smoothed_ref.maps> <unsmoothed_ref.maps>
 
 library(ggplot2)
 
-# ============== 명령줄 인자 ==============
+# ============== Command-line arguments ==============
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 3) {
-  cat("사용법: Rscript maligner_multirank_strip.R <폴더> <smoothed_ref.maps> <unsmoothed_ref.maps>\n")
+  cat("Usage: Rscript maligner_multirank_strip.R <dir> <smoothed_ref.maps> <unsmoothed_ref.maps>\n")
   quit(status = 1)
 }
 PARENT_DIR <- args[1]
 SMOOTHED_REF_FILE <- args[2]
 UNSMOOTHED_REF_FILE <- args[3]
 
-cat("상위 폴더:", PARENT_DIR, "\n")
+cat("Parent folder:", PARENT_DIR, "\n")
 cat("Smoothed Reference:", SMOOTHED_REF_FILE, "\n")
 cat("Unsmoothed Reference:", UNSMOOTHED_REF_FILE, "\n")
 cat("========================================\n")
 
-# ============== 파라미터 ==============
+# ============== Parameters ==============
 MAX_RANKS       <- 10
 SMOOTHING_THRESHOLD <- 100
 LABEL_LW        <- 0.6
 LABEL_COLOR     <- "green"
 
-# ============== Maps 읽기 함수 (maligner_heatstrip.R과 동일) ==============
+# ============== Reading .maps files (same as maligner_heatstrip.R) ==============
 
 read_query_labels <- function(map_file) {
   line <- readLines(map_file, n = 1)
@@ -68,13 +69,13 @@ read_ref_fragments <- function(map_file, map_id) {
 }
 
 
-# ============== Fragment 매칭 (maligner_heatstrip.R과 동일) ==============
+# ============== Fragment matching (same as maligner_heatstrip.R) ==============
 
 match_fragments <- function(smoothed_frags_all, unsmoothed_frags_all,
                              ref_start_idx, ref_end_idx) {
-  # Smoothed→unsmoothed 결정적 매핑.
-  # merge(합침): cumsum 경계 exact lookup (R match())
-  # delete(제거): threshold 초과 frag index 필터
+  # Deterministic smoothed -> unsmoothed mapping.
+  # merge: exact lookup of the cumsum boundary (R match())
+  # delete: keep the fragment indices above the threshold
   n_smooth <- ref_end_idx - ref_start_idx
   if (n_smooth == 0) return(NULL)
 
@@ -128,7 +129,7 @@ match_fragments <- function(smoothed_frags_all, unsmoothed_frags_all,
 }
 
 
-# ============== Unsmoothed 트랙 정렬 (maligner_heatstrip.R과 동일) ==============
+# ============== Unsmoothed track alignment (same as maligner_heatstrip.R) ==============
 
 align_unsmoothed_track <- function(smoothed_frags, smoothed_labels_scaled,
                                     unsmoothed_labels, match_result) {
@@ -192,7 +193,7 @@ align_unsmoothed_track <- function(smoothed_frags, smoothed_labels_scaled,
 }
 
 
-# ============== Per-rank 데이터 추출 ==============
+# ============== Per-rank data extraction ==============
 
 prepare_rank_data <- function(df, row_index, query_folder,
                                smoothed_ref_file, unsmoothed_ref_file,
@@ -221,7 +222,7 @@ prepare_rank_data <- function(df, row_index, query_folder,
   smoothed_aligned <- smoothed_aligned - smoothed_aligned[1]
   if (max(smoothed_aligned) == 0) return(NULL)
 
-  # Chunk 처리 — matched_query_positions + inner anchor 계산에 필요
+  # Chunks, needed for matched_query_positions and for the inner anchor
   chunk_string <- as.character(df[row_index, "chunk_string"])
   chunks <- strsplit(chunk_string, ";")[[1]]
   chunks <- chunks[chunks != ""]
@@ -241,7 +242,7 @@ prepare_rank_data <- function(df, row_index, query_folder,
     matched_query_positions <- c(matched_query_positions, query_bp)
   }
 
-  # Inner anchor scaling (maligner_heatstrip.R 동일 로직)
+  # Inner anchor scaling (same logic as maligner_heatstrip.R)
   n_mq <- length(matched_query_positions)
   r_li <- as.integer(first_chunk_r_end  - ref_start_idx + 1)
   r_ri <- as.integer(last_chunk_r_start - ref_start_idx + 1)
@@ -294,12 +295,12 @@ prepare_rank_data <- function(df, row_index, query_folder,
     }
   }
 
-  # Full molecule 좌표로 offset 적용
+  # Offset into full-molecule coordinates
   smoothed_scaled <- smoothed_scaled + q_offset
   if (length(unsmoothed_scaled) > 0)
     unsmoothed_scaled <- unsmoothed_scaled + q_offset
 
-  # Reverse alignment이면 ref strip을 좌우반전
+  # A reverse alignment mirrors the reference strip left to right
   if (is_reverse) {
     flip_sum <- 2 * q_offset + query_bp
     smoothed_scaled <- flip_sum - smoothed_scaled
@@ -325,7 +326,7 @@ prepare_rank_data <- function(df, row_index, query_folder,
 }
 
 
-# ============== Multi-rank 플롯 생성 ==============
+# ============== Multi-rank plot ==============
 
 create_multirank_plot <- function(query_name, query_labels_full, ranks, output_path) {
   n_ranks  <- length(ranks)
@@ -334,8 +335,8 @@ create_multirank_plot <- function(query_name, query_labels_full, ranks, output_p
 
   # Track layout
   TRACK_H     <- 0.035
-  GAP_WITHIN  <- 0.005   # sm ↔ raw (같은 rank 내)
-  GAP_BETWEEN <- 0.018   # rank 그룹 간
+  GAP_WITHIN  <- 0.005   # smoothed to raw, inside one rank
+  GAP_BETWEEN <- 0.018   # between rank groups
   GAP_QUERY   <- 0.025   # data ↔ rank1
 
   total_y <- TRACK_H + GAP_QUERY +
@@ -355,7 +356,7 @@ create_multirank_plot <- function(query_name, query_labels_full, ranks, output_p
     track_ys[[i]] <- list(sm = sm_y, raw = raw_y)
   }
 
-  # Pad (ref label 음수 offset 대비)
+  # Pad, so a reference label at a negative offset still fits
   pad_bp <- 0
   for (rd in ranks) {
     if (length(rd$smoothed_labels) > 0)
@@ -443,7 +444,7 @@ create_multirank_plot <- function(query_name, query_labels_full, ranks, output_p
     }
   }
 
-  # --- Axes / Theme (maligner_heatstrip.R과 동일) ---
+  # --- Axes / theme (same as maligner_heatstrip.R) ---
   p <- p +
     scale_x_continuous(
       breaks = seq(0, total_bp, by = round(total_bp / 5, -3)),
@@ -478,13 +479,13 @@ create_multirank_plot <- function(query_name, query_labels_full, ranks, output_p
 }
 
 
-# ============== 메인 처리 ==============
+# ============== Main ==============
 
 direct_mal <- list.files(PARENT_DIR, pattern = "_mal\\.txt$",
                          full.names = TRUE, recursive = FALSE)
 if (length(direct_mal) > 0) {
   mal_files <- direct_mal
-  cat("단일 폴더 모드\n")
+  cat("Single-folder mode\n")
 } else {
   subdirs <- list.dirs(PARENT_DIR, recursive = FALSE)
   mal_files <- unlist(lapply(subdirs, function(d) {
@@ -493,14 +494,14 @@ if (length(direct_mal) > 0) {
 }
 
 if (length(mal_files) == 0) {
-  cat("오류: _mal.txt 파일을 찾을 수 없습니다.\n")
+  cat("Error: no _mal.txt file found.\n")
   quit(status = 1)
 }
 
-cat("찾은 파일 수:", length(mal_files), "\n\n")
+cat("Files found:", length(mal_files), "\n\n")
 
 for (mal_file in mal_files) {
-  cat("처리 중:", mal_file, "\n")
+  cat("Processing:", mal_file, "\n")
   data_folder <- dirname(mal_file)
   folder_name <- basename(data_folder)
 
@@ -514,7 +515,7 @@ for (mal_file in mal_files) {
     df_top <- df[1:top_n, ]
     rownames(df_top) <- 1:nrow(df_top)
 
-    # Query maps 파일 찾기
+    # Locate the query .maps file
     query_map_name <- basename(as.character(df_top[1, "query_map"]))
     query_map_path <- file.path(data_folder, paste0(query_map_name, ".maps"))
     if (!file.exists(query_map_path)) {
@@ -522,14 +523,14 @@ for (mal_file in mal_files) {
       if (length(maps_files) > 0) {
         query_map_path <- maps_files[1]
       } else {
-        cat("  maps 파일 없음, 건너뜀\n\n"); next
+        cat("  no .maps file, skipping\n\n"); next
       }
     }
     query_labels_full <- read_query_labels(query_map_path)
 
-    cat("  총 행:", nrow(df), "/ 상위", top_n, "개 처리\n")
+    cat("  rows:", nrow(df), "/ taking top", top_n, "\n")
 
-    # 각 rank 처리
+    # One entry per rank
     ranks <- list()
     for (i in 1:top_n) {
       tryCatch({
@@ -542,10 +543,10 @@ for (mal_file in mal_files) {
                       i, rd$ref_id, rd$direction, rd$score,
                       rd$n_sm_frags, rd$n_unsm_frags, rd$delta))
         } else {
-          cat("  R", i, ": 데이터 오류, 건너뜀\n", sep = "")
+          cat("  R", i, ": bad data, skipping\n", sep = "")
         }
       }, error = function(e) {
-        cat("  R", i, " 오류: ", e$message, "\n", sep = "")
+        cat("  R", i, " error: ", e$message, "\n", sep = "")
       })
     }
 
@@ -553,14 +554,14 @@ for (mal_file in mal_files) {
       output_path <- file.path(data_folder,
                                paste0(folder_name, "_multirank_strip.png"))
       create_multirank_plot(folder_name, query_labels_full, ranks, output_path)
-      cat("  저장:", basename(output_path), "\n")
+      cat("  saved:", basename(output_path), "\n")
     }
 
   }, error = function(e) {
-    cat("  오류:", e$message, "\n")
+    cat("  error:", e$message, "\n")
   })
   cat("\n")
 }
 
 cat("========================================\n")
-cat("배치 처리 완료\n")
+cat("Batch complete\n")

@@ -195,7 +195,7 @@ def terminal_cuts(dp, w2, trim):
     def keep_full(side, edge):
         if len(side) < 2: return True
         q = [int(round(v)) for v in side]
-        if len(q) != len(set(q)): return True                     # 같은 픽셀 = clamp
+        if len(q) != len(set(q)): return True                     # duplicate pixels = clamped
         return sum(1 for v in q if abs(v - edge) <= 1) >= 2
     tl = trim if keep_full(L, 0) else int(min(L)) + 1
     tr = trim if keep_full(Rr, w2 - 1) else int(w2 - 1 - max(Rr)) + 1

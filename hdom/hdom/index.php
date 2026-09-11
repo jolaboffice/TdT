@@ -126,20 +126,22 @@ function hdom_table_from_csv($csv) {
     $drf = function($r){ return (isset($r['dir']) && is_numeric($r['dir'])) ? (string)(int)$r['dir'] : htmlspecialchars((string)($r['dir']??'')); };
     $txf = function($r,$k){ return (isset($r[$k]) && $r[$k]!=='') ? htmlspecialchars((string)$r[$k]) : ''; };
 
-    // 원래 색 유지: hDOM=method-local(#e8f4f8), mal=method-mal(#fff4e6). mal 헤더만 차분한 tan.
+    // Row colours are unchanged: hDOM=method-local(#e8f4f8), mal=method-mal(#fff4e6). Only the mal header is a muted tan.
     $css = '<style>'
       .'.mm .hdr-hdom td{background:#3498db;color:#fff;font-weight:bold}'
       .'.mm .hdr-mal td{background:#a67c52;color:#fff;font-weight:bold}'
       .'.mm .osep td{background:#34495e;color:#fff;font-weight:bold;text-align:left}'
       .'.mm .hdr-hdom,.mm .hdr-mal,.mm .osep{cursor:default}'
-      .'.mm td:nth-child(n+6),.mm th:nth-child(n+6){width:9.5%;min-width:56px;text-align:center;box-sizing:border-box}'  // scale~H_score / mal 동일 균일 폭 (7열 x 9.5% = 66.5%)
-      .'.mm thead th,.mm .hdr-hdom td,.mm .hdr-mal td{padding-top:2px !important;padding-bottom:2px !important;line-height:1.25 !important}'  // 컬럼명 행: 글씨크기 유지, 세로만 얇게
-      // 데이터 행(hDOM/mal)만 높이 0.9x. 기존: padding 10+10 + line 17.3 = 37.3px -> 8.1+8.1+17.3 = 33.5px.
-      // 컬럼명 행(thead th)과 그룹헤더(hdr-*), Other ranks 구분선(osep)은 위 규칙이 유지되도록 제외.
+      .'.mm td:nth-child(n+6),.mm th:nth-child(n+6){width:9.5%;min-width:56px;text-align:center;box-sizing:border-box}'  // scale..h_score and the mal columns share one width (7 cols x 9.5% = 66.5%)
+      .'.mm thead th,.mm .hdr-hdom td,.mm .hdr-mal td{padding-top:2px !important;padding-bottom:2px !important;line-height:1.25 !important}'  // header row: same font size, thinner vertically only
+      // Data rows (hDOM/mal) only, at 0.9x height: padding 10+10 + line 17.3 = 37.3px -> 8.1+8.1+17.3 = 33.5px.
+      // The header row (thead th), the group headers (hdr-*) and the Other ranks separator (osep) are
+      // excluded, so the rule above still applies to them.
       .'.mm tbody tr:not(.hdr-hdom):not(.hdr-mal):not(.osep) td{padding-top:8.1px !important;padding-bottom:8.1px !important;line-height:1.2 !important}'
       .'</style>';
 
-    // hDOM 12열 (cc_rg, misc 제거). mal은 cc_r(7번째) 위치 비우고 matched~m_score 정렬.
+    // hDOM, 12 columns (cc_rg and misc dropped). mal leaves the cc_r slot (7th) empty and lines
+    // matched..m_score up from there.
     $HDR_H = array('rank','chromosome','method','aligned_bp','dir','scale','cc_r','cc_g','cc_rg2','cc_rL','F1_g','h_score');
     $HDR_M = array('rank','chromosome','method','aligned_bp','dir','scale','matched','FP','FN','sizing','F1','m_score');
     $hrow = function($cols,$cls){ $t='    <tr class="'.$cls.'">'; foreach($cols as $c) $t.='<td>'.htmlspecialchars($c).'</td>'; return $t."</tr>\n"; };
@@ -166,14 +168,14 @@ function hdom_table_from_csv($csv) {
         return '    <tr class="'.$cl.'" data-rtype="mal" data-sel="'.($i+1).'">'.$tds."</tr>\n";
     };
 
-    // 한 테이블 (12열 자동정렬). thead = hDOM 헤더.
+    // One table, 12 columns lining up on their own. thead is the hDOM header.
     $t = '<table border="0" class="dataframe matching-table mm">'."\n  <thead>\n    <tr>\n";
     foreach($HDR_H as $c) $t.='      <th>'.htmlspecialchars($c)."</th>\n"; $t.="    </tr>\n  </thead>\n  <tbody>\n";
-    foreach (array_slice($loc,0,3) as $p) $t.=$rLoc($p);          // 제일 위: hDOM top-3
+    foreach (array_slice($loc,0,3) as $p) $t.=$rLoc($p);          // top: hDOM top-3
     $t.=$hrow($HDR_M,'hdr-mal');
-    foreach (array_slice($mal,0,3) as $p) $t.=$rMal($p);          //          mal top-3
+    foreach (array_slice($mal,0,3) as $p) $t.=$rMal($p);          //      mal top-3
     $lr=array_slice($loc,3); $mr=array_slice($mal,3);
-    if ($lr || $mr){                                              // 아래: Other ranks
+    if ($lr || $mr){                                              // below: Other ranks
         $t.='    <tr class="osep"><td colspan="'.count($HDR_H).'">Other ranks</td></tr>'."\n";
         if ($lr){ $t.=$hrow($HDR_H,'hdr-hdom'); foreach($lr as $p) $t.=$rLoc($p); }
         if ($mr){ $t.=$hrow($HDR_M,'hdr-mal'); foreach($mr as $p) $t.=$rMal($p); }
@@ -215,7 +217,8 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
     // ---- paper layout: data label = length (kb), WHITE + right-aligned same as rank; straightened keeps raw+"(lin.)"; original hides Linearized ----
     // generic: applies to ANY folder that ships a _lengths.json (was hardcoded to basename=='Figure3')
     if (is_file("$base_path/_lengths.json")) {
-        $isstr = (strpos($m, '>data(raw)</div>') !== false);  // 직선화 판단: 파일명 아닌 뷰 내용(data(raw) 패널 존재)으로. 배포가 _straightened 접미사를 제거했으므로 파일명 기준은 무효
+        $isstr = (strpos($m, '>data(raw)</div>') !== false);  // straightened or not is read from the view itself (does a data(raw) panel exist), not from the
+        // file name: the distribution strips the _straightened suffix, so the name no longer carries it
         if (!$isstr) {  // original: hide the Linearized panel (anchor on green label, BEFORE relabel strips color)
             $m = preg_replace('/<div class="comparison-item">(<div class="image-label" style="color:#27ae60")/', '<div class="comparison-item" style="display:none">$1', $m);
         }
@@ -226,7 +229,8 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
             // edge to box_right-15px (aligned with rank); a too-long label overflows LEFT into the black area (not clipped by the image on the right).
             $ds = 'style="display:flex;justify-content:flex-end;align-items:center"';
             $m = preg_replace('/<div class="image-label" style="color:#e67e22">data\(raw\)<\/div>/', '<div class="image-label" '.$ds.'><span style="white-space:nowrap">'.$lk.'</span></div>', $m);
-            // lin. 라벨은 이미지 중앙(50%)이 아니라 DNA contour 높이(~66%: label-dots 마커띠 때문에 분자가 아래로 밀림)에 맞춤
+            // the lin. label sits at the DNA contour height (~66%), not the image centre (50%): the
+            // label-dots marker band pushes the molecule down
             $m = preg_replace('/<div class="image-label" style="color:#27ae60">Linearized<\/div>/', '<div class="image-label" style="position:relative;align-self:stretch"><span style="position:absolute;top:66%;right:15px;transform:translateY(-50%);white-space:nowrap">L '.$lk.'</span></div>', $m);
             $m = str_replace('<div class="image-label">data</div>', '<div class="image-label">'.$lk.'</div>', $m);
         }

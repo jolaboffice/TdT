@@ -329,8 +329,9 @@ for k in mine:
     # second, reported maligner pass in [2b] and for the white-circle marking in the view.
     # Under 2 survivors there is no alignable map, so that molecule gets no trimmed pass at all.
     w2 = wp.shape[-1]
-    # 보고용 maligner 도 F1 과 같은 말단 규칙을 쓴다. 규칙이 갈리면 뷰의 mal 행과 local 행이
-    # 서로 다른 표지셋으로 계산되어 같은 분자를 다르게 설명하게 된다.
+    # The reported maligner pass uses the same terminal rule as F1. If the two rules diverge, the
+    # mal row and the local row in the view are computed from different label sets, and the same
+    # molecule ends up described two different ways.
     _tl, _tr = P.terminal_cuts(np.asarray(CACHE[k], float), w2, TRIM_PX)
     kept[k] = [p for p in CACHE[k] if _tl <= p <= w2 - 1 - _tr]
     removed[k] = sorted(set(CACHE[k]) - set(kept[k])) if len(kept[k]) >= 2 else []
