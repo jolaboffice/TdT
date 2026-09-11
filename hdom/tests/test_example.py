@@ -3,7 +3,9 @@
 
     python3 tests/test_example.py
 
-Needs `maligner_dp` on PATH. Takes about a minute -- the example reference is two chromosomes,
+Needs `maligner_dp` on PATH and CuPy on a working GPU; it skips rather than fails when
+either is absent, because that is a machine it cannot run on, not a regression.
+Takes about a minute -- the example reference is two chromosomes,
 not a whole genome. Unlike tests/test_release.py this exercises the scoring itself, so it
 catches a change that runs cleanly but moves molecules to different loci.
 
@@ -21,6 +23,14 @@ def main():
     import shutil, subprocess, tempfile
     if not shutil.which('maligner_dp'):
         print('SKIP: maligner_dp not on PATH')
+        return 0
+    # The pcc stage runs on the GPU, and hDOM_pipeline.py refuses to start without CuPy rather
+    # than quietly finishing on maligner candidates alone. That makes a GPU-less machine an
+    # environment this test cannot run in, not a regression -- the same call as maligner_dp above.
+    try:
+        import cupy  # noqa: F401
+    except Exception:
+        print('SKIP: CuPy unavailable, the pcc stage needs an NVIDIA GPU')
         return 0
     with tempfile.TemporaryDirectory() as out:
         r = subprocess.run([sys.executable, os.path.join(ROOT, 'hDOM_pipeline.py'),
@@ -59,6 +69,10 @@ def test_example():
     import pytest
     if not shutil.which('maligner_dp'):
         pytest.skip('maligner_dp not on PATH: the label-only scorer cannot run')
+    try:
+        import cupy  # noqa: F401
+    except Exception:
+        pytest.skip('CuPy unavailable: the pcc stage needs an NVIDIA GPU')
     assert main() == 0
 
 
