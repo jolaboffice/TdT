@@ -4,6 +4,8 @@ __pycache__/
 .DS_Store
 *.swp
 *~
+*.bak
+*.bak_*
 
 # Pipeline output
 .sa_*/
@@ -13,3 +15,6 @@ __pycache__/
 *_maligner_dp*.txt
 !hdom/example/**
 !hdom/example_genome/**
+
+# the example negations above would otherwise re-include compiled caches
+**/__pycache__/

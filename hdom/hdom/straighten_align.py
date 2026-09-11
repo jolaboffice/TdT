@@ -25,7 +25,7 @@ warnings.filterwarnings('ignore')
 _PKG = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, _PKG)
 import local_align_pipeline as P
 import Label_Detect_ML_based as ML
-from scipy.ndimage import map_coordinates
+from scipy.ndimage import map_coordinates, median_filter
 from scipy.signal import peak_widths, find_peaks as _find_peaks
 from hDOM_tif2html_Y import process_query_image
 
@@ -60,7 +60,7 @@ def _key(f):
     return n
 P.refined_green_peaks = lambda f: np.asarray(CACHE[_key(f)], dtype=int)
 
-def backbone(red, win=4, reacq=20):
+def backbone(red, win=4, reacq=20, maxstep=None, min_run=10):
     """Trace the DNA backbone: for each image column, the intensity centroid of the red strand.
 
     Walking outward in both directions from the brightest column, each step takes the centroid
@@ -71,6 +71,16 @@ def backbone(red, win=4, reacq=20):
 
     The threshold is set from the strand's own brightness -- the median of the upper 60% of column
     maxima -- rather than a fixed level, so dim and bright molecules are traced the same way.
+
+    With maxstep set (the BBFIX pass, see chosen_backbone), a column whose centroid sits more than
+    maxstep rows from the previous column is dropped instead of accepted: a DNA backbone in these
+    crops drifts 0.004 px per column net (median over 59 molecules, at most 0.034), so a 2 px step
+    means the tracer left the strand for a nearby speck and would otherwise drag the straightened
+    image into a false hump. maxstep=None reproduces the original trace exactly.
+
+    This is not safe to apply everywhere: the largest single-column step of an ordinary trace is
+    itself about 2 px (median 2.09 px over those molecules), so maxstep=2.0 also rejects legitimate
+    columns. chosen_backbone gates it on a test made after straightening; see METHODS.md section 2.
 
     Returns one y per column, NaN where the strand was never acquired.
     """
@@ -91,10 +101,84 @@ def backbone(red, win=4, reacq=20):
             # (+-reacq) window (thr-gated, bounded jump). Molecule crops place DNA near the image
             # edge, so a sharp terminal bend or a faint stretch shouldn't truncate the backbone.
             if c is None and reacq > win: c = cw(x, yp, wn=reacq)
+            if maxstep is not None and c is not None and abs(c - yp) > maxstep: c = None
             if c is not None: y[x] = c; yp = c
+    if maxstep is None: return y
+    # A single survivor inside a rejected run would anchor the interpolation and pull the trace off
+    # the strand, so drop points far from a local median. Wide window first, so a narrow excursion
+    # cannot drag the median toward itself.
+    for wm in (101, 61, 31):
+        v = np.where(~np.isnan(y))[0]
+        if len(v) < 10: break
+        mf = median_filter(np.interp(np.arange(W), v, y[v]), size=wm, mode='nearest')
+        bad = (~np.isnan(y)) & (np.abs(y - mf) > maxstep)
+        if bad.any(): y[bad] = np.nan
+    # Short surviving islands between rejected runs are re-acquisition residue.
+    ok = ~np.isnan(y); i = 0
+    while i < W:
+        if not ok[i]: i += 1; continue
+        j = i
+        while j < W and ok[j]: j += 1
+        gl = 0; k = i - 1
+        while k >= 0 and not ok[k]: gl += 1; k -= 1
+        gr = 0; k = j
+        while k < W and not ok[k]: gr += 1; k += 1
+        if (j - i) < min_run and (gl >= j - i or gr >= j - i) and (gl + gr) > 0: y[i:j] = np.nan
+        i = j
     return y
 
-def sweep(a, ml, sm=6):
+
+# ---------- straightening QC: repair traces that produce a false hump ----------
+# The tracer can step off the strand onto a nearby speck where the red signal is locally faint, and
+# arc-length resampling then bakes that excursion into the straightened image as a "speed bump" the
+# molecule never had. BBFIX (backbone(..., maxstep=...)) removes those steps, but applying it to
+# every molecule would perturb ~75% of them for no visible gain, so it is used only where the defect
+# is actually present. The test is made on the straightening this run produced, not on any stored
+# result: straighten once, measure how far the DNA band wanders vertically in that image (ydev), and
+# how far the BBFIX trace disagrees with the one used (d99). Their product is large only when a real
+# excursion has been baked in. A pipeline re-run therefore judges its own output -- a first pass with
+# different defects legitimately selects a different set of molecules.
+BBFIX_MAXSTEP = float(os.environ.get('BBFIX_MAXSTEP', '2.0'))    # max backbone move per column (px)
+BBFIX_MINRUN  = int(os.environ.get('BBFIX_MINRUN', '10'))        # shortest surviving island kept
+BBFIX_THRESH  = float(os.environ.get('BBFIX_THRESH', '40'))      # d99 * ydev above which BBFIX is used
+BBFIX_ON      = os.environ.get('BBFIX', '1') not in ('0', 'no', 'off')
+
+def _span_fill(y):
+    """Traced span plus the trace linearly interpolated across its internal gaps."""
+    v = np.where(~np.isnan(y))[0]
+    if len(v) < 20: return None, None
+    xs = np.arange(v.min(), v.max() + 1)
+    return xs, np.interp(xs, v, y[v])
+
+def _trace_gap(y0, y1):
+    """99th-percentile vertical disagreement between two traces over their common span (px)."""
+    x0, f0 = _span_fill(y0); x1, f1 = _span_fill(y1)
+    if f0 is None or f1 is None: return 0.0
+    lo, hi = max(x0[0], x1[0]), min(x0[-1], x1[-1])
+    if hi - lo < 50: return 0.0
+    g = np.arange(lo, hi + 1)
+    return float(np.percentile(np.abs(np.interp(g, x0, f0) - np.interp(g, x1, f1)), 99))
+
+def _band_dev(swept_red):
+    """How far the DNA band wanders from its own smooth trend in a straightened image (px, p99).
+
+    A correct straightening leaves the strand on a level band; a trace excursion tilts the sampling
+    normals there, so the band's intensity centroid rides up or down over that stretch. Measured
+    against a 151-column median so genuine slow drift does not count.
+    """
+    r = np.clip(swept_red.astype(float) - np.median(swept_red), 0, None); tot = r.sum(0)
+    if not (tot > 0).any(): return 0.0
+    keep = tot > np.percentile(tot[tot > 0], 10); rows = np.arange(r.shape[0])
+    c = np.full(r.shape[1], np.nan); m = tot > 0
+    c[m] = (r[:, m] * rows[:, None]).sum(0) / tot[m]; c[~keep] = np.nan
+    v = np.where(~np.isnan(c))[0]
+    if len(v) < 60: return 0.0
+    gx = np.arange(v.min(), v.max() + 1); cv = np.interp(gx, v, c[v])
+    cs = np.array([cv[max(0, i - 4):i + 5].mean() for i in range(len(cv))])
+    return float(np.percentile(np.abs(cs - median_filter(cs, size=151, mode='nearest')), 99))
+
+SWEEP_SM = int(os.environ.get('SWEEP_SM', '6'))   # backbone smoothing half-window (columns)
+def sweep(a, ml, sm=None):
     """Straighten the molecule by resampling along the backbone's arc length.
 
     The traced backbone is smoothed over +-sm columns and its arc length s(x) accumulated; the
@@ -113,7 +197,19 @@ def sweep(a, ml, sm=6):
     Returns (2-frame straightened image, label positions in the new grid, (x0, x1) traced span),
     or None if the trace was too short to be usable.
     """
-    red = a[0].astype(float); H, Wd = red.shape; y = backbone(red); v = np.where(~np.isnan(y))[0]
+    if sm is None: sm = SWEEP_SM
+    red = a[0].astype(float)
+    r0 = _warp(a, backbone(red), ml, sm)
+    if r0 is None or not BBFIX_ON: return r0
+    yb = backbone(red, maxstep=BBFIX_MAXSTEP, min_run=BBFIX_MINRUN)
+    d = _trace_gap(backbone(red), yb)
+    if d <= 0: return r0
+    if d * _band_dev(r0[0][0]) < BBFIX_THRESH: return r0
+    return _warp(a, yb, ml, sm) or r0
+
+def _warp(a, y, ml, sm):
+    """Resample both frames along the arc length of trace y (the body of sweep, given a trace)."""
+    H, Wd = a[0].shape; v = np.where(~np.isnan(y))[0]
     if len(v) < 10: return None
     x0, x1 = v.min(), v.max(); xs = np.arange(x0, x1 + 1); yv = y[xs]; m = ~np.isnan(yv); yv = np.interp(xs, xs[m], yv[m])
     ys = np.array([yv[max(0, i - sm):i + sm + 1].mean() for i in range(len(xs))]); dy = np.gradient(ys)
@@ -124,6 +220,23 @@ def sweep(a, ml, sm=6):
     out = np.zeros((2, len(ks), Wp), np.float32)
     for f in (0, 1): out[f] = map_coordinates(a[f].astype(float), [RR.ravel(), CC.ravel()], order=1, mode='constant', cval=0).reshape(len(ks), Wp)
     return out.astype(np.uint16), [float(np.interp(x, xs, s) / Stot * (Wp - 1)) for x in ml], (x0, x1)
+
+def chosen_backbone(red, sm=None):
+    """The trace sweep() would actually use for this molecule (stock, or BBFIX if the QC test fires).
+
+    Kept in step with sweep() so the before/after panel crops the raw image over the same span that
+    was straightened; a mismatch would misreport the unfolding as a length change.
+    """
+    if sm is None: sm = SWEEP_SM
+    y = backbone(red)
+    if not BBFIX_ON: return y
+    a = np.stack([red, np.zeros_like(red)])
+    r0 = _warp(a, y, [], sm)
+    if r0 is None: return y
+    yb = backbone(red, maxstep=BBFIX_MAXSTEP, min_run=BBFIX_MINRUN)
+    d = _trace_gap(y, yb)
+    if d <= 0 or d * _band_dev(r0[0][0]) < BBFIX_THRESH: return y
+    return yb
 
 def snap(oc, sweptgreen):
     """Move each warped label onto the nearest real green peak in the straightened image (+-4 px).
@@ -189,7 +302,23 @@ for k in mine:
     if a.ndim != 3 or a.shape[0] < 2 or min(a.shape[1:]) < 1:
         print(f'  unusable image {k} (shape {a.shape}; need 2 frames with non-zero size)',
               flush=True); continue
-    ml = sorted(int(x) for x in ML.detect_labels(src))
+    # HDOM_LABEL_EDIT: a curated label list for this molecule replaces ML detection. Positions are
+    # RAW-frame pixels (the same frame detect_labels returns), so straightening maps them onward
+    # exactly as it maps detected ones -- a hand-checked molecule differs from an automatic one only
+    # in where the labels came from.
+    ml = None
+    _ed = os.environ.get('HDOM_LABEL_EDIT', '')
+    if _ed:
+        _ef = os.path.join(_ed, f'{k}_labeledit.json')
+        if os.path.exists(_ef):
+            try:
+                _j = json.load(open(_ef, encoding='utf-8'))
+                ml = sorted(int(round(float(x))) for x in _j.get('final', []))
+                print(f'  [labeledit] {k}: {len(ml)} labels', flush=True)
+            except Exception as e:
+                print(f'  labeledit read fail {k}: {e}', flush=True); ml = None
+    if ml is None:
+        ml = sorted(int(x) for x in ML.detect_labels(src))
     if not ml: print(f'  no ML {k}', flush=True); continue
     r = sweep(a, ml)
     if r is None: print(f'  sweep fail {k}', flush=True); continue
@@ -291,7 +420,8 @@ for k in staged:
     # full-label run so they still get a maligner row rather than a blank one.
     F3V.to_figure3_csv(cf, trim_mal(k) or f'{ST}/{k}_maligner_dp.txt')   # 14->19 col, native mal
     if LOGP:
-        print(f'  [logp] {k[:40]} -> {LP.compute_logp(k, ST)}', flush=True)
+        # rerank has just rewritten cf, so its log(P) holds null_logp; force restores the K=5000 null.
+        print(f'  [logp] {k[:40]} -> {LP.compute_logp(k, ST, force=True)}', flush=True)
     ok.append(k)
 print(f'[2] shard{shk} reranked {len(ok)}', flush=True)
 
@@ -304,7 +434,7 @@ for k in ok:
     if BEFORE_AFTER and os.path.exists(vf):
         h = open(vf, encoding='utf-8').read()
         if ANCH in h:
-            rs = rawmol[k]; y = backbone(rs[0].astype(float)); v = np.where(~np.isnan(y))[0]
+            rs = rawmol[k]; y = chosen_backbone(rs[0].astype(float)); v = np.where(~np.isnan(y))[0]
             x0, x1 = (int(v.min()), int(v.max())) if len(v) else (0, rs.shape[-1] - 1)
             tp = f'{ST}/_raw_{k[:12]}.tif'; tifffile.imwrite(tp, rs[:, :, x0:x1 + 1].astype(np.uint16)); _, rb = process_query_image(tp); os.remove(tp)
             # length-honest display: raw(curved bbox width = x1-x0) and Linearized(arc-length = straightened

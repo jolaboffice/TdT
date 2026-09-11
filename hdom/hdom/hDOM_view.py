@@ -539,8 +539,21 @@ def tif2view_html(tif_path, mol_index, total_mols, prev_html, next_html,
                          # they are never baked into the data image
     if label_dots:
         try:
-            # Green dots = peaks kept in the scored tif, not the raw peaks of the display tif
-            _pk = [int(round(10 + p)) for p in refined_green_peaks(tif_path)]
+            # Green dots = the labels the alignment actually scored. `{base}_mlpeaks.json` is written
+            # by the straightening step and holds exactly those, so a curated or hand-edited label
+            # appears here even where the display tif's own green is too faint for peak-finding to
+            # recover it. Falling back to re-detection keeps older output folders working.
+            _mlp = os.path.splitext(tif_path)[0]
+            for _suf in ('_orig', ''):
+                _c = (_mlp[:-len(_suf)] if _suf and _mlp.endswith(_suf) else _mlp) + '_mlpeaks.json'
+                if os.path.exists(_c):
+                    try:
+                        _pk = [int(round(10 + float(x))) for x in json.load(open(_c, encoding='utf-8'))]
+                        break
+                    except Exception:
+                        pass
+            else:
+                _pk = [int(round(10 + p)) for p in refined_green_peaks(tif_path)]
             _w, _h = query_img.size
             _r = max(2, round(_h * 0.116)); _dr = _r * 2; _mg = 2 * _dr + 4   # green=diamond 2x
             # Markers are drawn on a supersampled RGBA strip, then LANCZOS-downscaled.

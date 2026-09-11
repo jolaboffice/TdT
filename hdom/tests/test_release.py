@@ -22,7 +22,7 @@ def test_layout():
     # LICENSE is not in this list: the licence sits at the root of the toolkit, one level up,
     # because maligner is bundled there under the same terms and a second copy here would only
     # invite the two to drift apart.
-    for rel in ('run_pipeline.py', 'make_reference.py', 'README.md',
+    for rel in ('hDOM_pipeline.py', 'make_reference.py', 'README.md',
                 'hdom/straighten_align.py', 'hdom/local_align_pipeline.py',
                 'hdom/mdom_reanchor.py', 'hdom/hDOM_view.py',
                 'hdom/Label_Detect_ML_based.py', 'hdom/label_model.joblib',

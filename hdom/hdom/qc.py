@@ -24,7 +24,7 @@ SNR clustered at 1.2-1.8 against a median of 6.6 here. That contrast is the poin
 them: they tell a new user whether this pipeline is being applied to the kind of image it was
 built for.
 
-Nothing is filtered by default. `run_pipeline.py` writes the sidecar and warns; passing
+Nothing is filtered by default. `hDOM_pipeline.py` writes the sidecar and warns; passing
 `--qc-filter` is what actually drops a molecule, and the alignment viewer shows a banner when a
 sidecar reports a failure.
 """

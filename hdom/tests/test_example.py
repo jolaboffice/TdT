@@ -23,7 +23,7 @@ def main():
         print('SKIP: maligner_dp not on PATH')
         return 0
     with tempfile.TemporaryDirectory() as out:
-        r = subprocess.run([sys.executable, os.path.join(ROOT, 'run_pipeline.py'),
+        r = subprocess.run([sys.executable, os.path.join(ROOT, 'hDOM_pipeline.py'),
                             '--molecules', os.path.join(EX, 'molecules'),
                             '--ref-map', os.path.join(EX, 'reference'),
                             '--output', out, '--shards', '3'],

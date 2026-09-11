@@ -48,6 +48,14 @@ background speckle.
 Classifier: `RandomForestClassifier`, 400 trees, unlimited depth. A candidate is called a label
 when `P(label) ≥ 0.5`.
 
+**Curated label lists.** Setting `HDOM_LABEL_EDIT` to a folder makes the pipeline read
+`{molecule}_labeledit.json` from it, and use the positions in its `final` array in place of what
+the classifier returned for that molecule. Positions are raw-frame pixels, the same frame the
+detector reports, so straightening carries them onward exactly as it carries detected ones: a
+hand-checked molecule differs from an automatic one only in where its labels came from. Molecules
+with no such file are unaffected. The variable is unset by default; it exists so that a molecule
+whose labels were checked by eye can be re-run without editing the image.
+
 ---
 
 ## 2. Straightening
@@ -61,9 +69,53 @@ directions. Columns whose window carries no signal above `max(0.15·typical_peak
 retried once with a ±20 px window, so a dim stretch or a sharp terminal bend does not truncate
 the trace.
 
-**Arc-length resampling.** The trace is smoothed over ±6 px, its arc length `S` is accumulated,
-and the molecule is sampled at `ceil(S)+1` points evenly spaced *along the arc*, each sample
-taken on the normal to the backbone. Both frames go through the same transform.
+**Arc-length resampling.** The trace is smoothed over ±6 px (`SWEEP_SM`), its arc length `S` is
+accumulated, and the molecule is sampled at `ceil(S)+1` points evenly spaced *along the arc*, each
+sample taken on the normal to the backbone. Both frames go through the same transform.
+
+**Backbone repair (BBFIX).** Where the red signal is locally faint the tracer can step off the
+strand onto a nearby speck, and arc-length resampling then bakes that excursion into the
+straightened image as a bump the molecule never had. The repair is applied after straightening,
+not before: the molecule is straightened once with the trace above, that result is tested, and only
+a molecule that fails the test is straightened a second time with a repaired trace.
+
+The repaired trace drops a column whose centroid sits more than `BBFIX_MAXSTEP = 2.0 px` from the
+previous column's, rather than accepting it. Three median-filter passes (windows 101, 61 and 31
+columns, widest first, so a narrow excursion cannot drag the median toward itself) then drop
+surviving points more than 2.0 px from the local median, and a surviving island shorter than
+`BBFIX_MINRUN = 10` columns with a rejected run at least as long on either side is dropped as
+re-acquisition residue.
+
+The test is a product of two quantities, both in pixels:
+
+```
+d99       99th percentile of |stock trace − repaired trace| over their common span
+band_dev  99th percentile of |c − median₁₅₁(c)|, c = per-column intensity centroid of the
+          straightened image the stock trace produced
+repair when   d99 · band_dev ≥ BBFIX_THRESH = 40
+```
+
+Neither factor alone is sufficient. The two traces disagree on many molecules without the
+disagreement reaching the image, and a band wanders for reasons other than a trace excursion; the
+product is large only when a real excursion has been baked in. The test reads the straightening
+this run produced rather than a stored result, so a re-run judges its own output.
+
+Why the repair is gated rather than always on: a backbone's net vertical drift is small (median
+0.004 px per column over 59 molecules, at most 0.034), but the largest *single*-column step in an
+ordinary trace is itself about 2 px (median 2.09 px over the same molecules, 90th percentile 7.9).
+`BBFIX_MAXSTEP = 2.0` therefore rejects legitimate columns on a large fraction of molecules, and
+applying the repaired trace unconditionally would perturb many straightenings to fix a few.
+
+Measured on 585 molecules drawn at random from five groups, the test fires on 17 (**2.9%**); the
+product has median 0.82, 90th percentile 15.3, 99th percentile 62.1. A separate 30-molecule set was
+run twice, once with the repair forced on for every molecule and once with it disabled. These 30
+are not a random sample: the test selects 14 of them, far more than the 2.9% base rate. Among those 14 the
+rank-1 `F1` rises in 5 and falls in **none** (mean +0.012, at most +0.06), no molecule changes
+chromosome, 4 move to the other haplotype and 10 stay on the same reference with a median shift of
+800 bp. Among the other 16, which the repair would also have altered but the test rejects, `F1`
+rises in 6 and falls in 3 (−0.03 to +0.13). Separating those two groups is what the threshold buys.
+
+`BBFIX=0` disables the pass, and the straightening is then exactly the trace described above.
 
 **Label carry-through.** Labels are detected on the raw image (§1) and mapped through the same
 arc-length transform, then snapped to the nearest swept green peak within ±4 px. A label with no
@@ -175,6 +227,9 @@ ignore the unreliable labels. The reported maligner pass uses `--max-alignments 
 the 10 best by `total_rescaled_score` (ascending is better). A molecule with fewer than two
 surviving labels gets no trimmed pass and reports its full-label row.
 
+The window is `HDOM_TRIM_PX` if that is set, and `5000/bpp` otherwise. Everything reported here
+uses the default; `HDOM_TRIM_PX=0` turns the trim off and scores every label.
+
 ---
 
 ## 6. Null model (h-score)
@@ -184,6 +239,12 @@ Optional (`--logp`). For each molecule, `K = 5000` decoy windows are drawn from 
 scored by the same `cc_r^loc × F1` with the same freedom over the scale grid and both directions.
 The draw is seeded from `md5(molecule name)`, so a re-run reproduces the same null. A reference
 holding only the matched chromosome has no population to draw from and reports `nodecoy`.
+
+Scored rows are the ranked `local` rows and the `H_local` homologue row, so the homologue is
+measured against the same null as the loci it is being compared with. The pipeline recomputes this
+null even when a `{base}_vsrandom.txt` sidecar already exists, because the re-ranking step
+overwrites the `log(P)` column with the within-molecule `null_logp` of §4 on its way past; without
+the recompute, the column read back would be that value rather than the `K = 5000` one.
 
 The observed score becomes a p-value **parametrically, not by counting**. A normal distribution
 is fitted to the null by moment matching, and `log₁₀ P` is read from its upper tail. With
@@ -390,6 +451,11 @@ all of its whole-molecule correlation. For the re-ranked pick the same two-level
 - **"Correct" is the pipeline's own answer** in §8 unless stated otherwise. The label `F1` is
   independent of the red channel and is what makes those comparisons more than circular, but no
   external ground truth was used. Simulated molecules from known loci would settle it.
+- **`BBFIX_THRESH = 40` is empirical, and its check set is not independent.** Like the §6b
+  thresholds it is a boundary drawn around molecules already judged by eye, and the 30-molecule
+  comparison in §2 that shows it separating help from harm is drawn from the same kind of case it
+  was set on. What that comparison does establish is the direction: where the test fires, no
+  molecule's `F1` fell. A held-out set was not used.
 - **Detection threshold is fixed at 0.5.** On a molecule whose green background sits at 28% of
   its peak, ten candidates at 1.3–1.9× background pass at probabilities 0.50–0.75 while the
   twelve real labels score 0.99–1.00. The model separates them; the threshold does not.

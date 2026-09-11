@@ -1,7 +1,7 @@
 <?php
 register_shutdown_function(function(){ if(($_SERVER['REQUEST_METHOD']??'')==='POST') return; $h=(($_GET['file']??'')!=='')?'index.php':'../'; echo '<a href="'.$h.'" style="position:fixed;top:6px;left:6px;z-index:2147483647;background:#34495e;color:#fff;padding:6px 14px;border-radius:5px;text-decoration:none;font:bold 13px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)">&#8593; Up</a>'; });
 // 4-method local-align comparison index. Serves <base>_view_ytb.html, or <base>_view.html:
-// the analysis server writes the first, run_pipeline.py writes the second, and one viewer has to
+// the analysis server writes the first, hDOM_pipeline.py writes the second, and one viewer has to
 // read both or a released run lands on a 404.
 // and re-renders the matching table (local / mDOM / mal / pcc + H) from the CSV.
 $base_path = __DIR__;

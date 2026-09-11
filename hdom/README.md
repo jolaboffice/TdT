@@ -5,8 +5,12 @@ molecule: the AT-dye red backbone profile and the green nick labels. Give it mol
 reference map; it returns the ranked chromosomal assignment per molecule plus an HTML view.
 
 ```
-python3 run_pipeline.py --molecules RAW_DIR --ref-map REF_MAP_DIR --output OUT_DIR
+python3 hDOM_pipeline.py --molecules RAW_DIR --ref-map REF_MAP_DIR --output OUT_DIR
+python3 hDOM_pipeline.py RAW_DIR          # short form: ref_map/ and out/ beside RAW_DIR
 ```
+
+The short form fills in `--molecules` from the positional argument and defaults `--ref-map` to
+`RAW_DIR/../ref_map` and `--output` to `RAW_DIR/../out`. Either form accepts the options below.
 
 ## Input
 
@@ -60,11 +64,11 @@ panel and the homologue-aware locus test are skipped.
 
 ## Example
 
-`example/` holds three molecules and a two-chromosome reference (chr21 maternal and paternal),
+`example/` holds three molecules and a two-chromosome reference (chr20 maternal and paternal),
 built by `make_reference.py` from FASTA. It runs in about a minute:
 
 ```
-python3 run_pipeline.py --molecules example/molecules --ref-map example/reference \
+python3 hDOM_pipeline.py --molecules example/molecules --ref-map example/reference \
                         --output /tmp/hdom_example --shards 3
 ```
 
@@ -73,7 +77,7 @@ records that, and `tests/test_example.py` checks it.
 
 Note this example searches two chromosomes, not a genome, so it demonstrates the mechanics
 rather than the specificity of a genome-wide search. `--logp` needs more than that: the null
-draws decoy windows from every chromosome except the one the molecule matched, so on a chr21-
+draws decoy windows from every chromosome except the one the molecule matched, so on a chr20-
 only reference it reports `nodecoy` and leaves `log(P)` as the re-rank value.
 
 ## Tests
@@ -163,25 +167,36 @@ trimmed pass and reports its full-label maligner row instead. Dropped positions 
 ## Layout
 
 ```
-run_pipeline.py            entry point
-MANIFEST.md                provenance: which vendored files are byte-identical, and the exact
-                           path-only diffs for the rest
+hDOM_pipeline.py           entry point
+make_reference.py          builds a reference map from FASTA
+METHODS.md                 every stage, every constant, and what has been measured
 hdom/
   straighten_align.py      stages 1-5, the pipeline proper
   local_align_pipeline.py  local re-rank (local_cc_r, F1, offset/scale optimisation)
   mdom_reanchor.py         label_f1 + the 5 kb trim rule
   logp_null.py             K=5000 random-null log(P)
   Label_Detect_ML_based.py ML label detector       (+ label_model.joblib)
-  hDOM_view.py    per-molecule HTML view
-  figure3_view.py          folder viewer + registries  (+ figure3_index.php)
+  hDOM_view.py             per-molecule HTML view
+  figure3_view.py          folder viewer + registries  (+ index.php)
+  qc.py                    per-molecule image quality checks
   polyn_filter.py          poly-N reference masking (optional; set HDOM_FASTA_DIR)
   paf_liftover.py          haplotype PAF lift-over for the homologue panel
   candidates/              red-PCC + maligner candidate generation, vendored unmodified
 ```
 
-Environment overrides (all optional; `run_pipeline.py` sets the first two for you):
-`HDOM_REFMAP`, `HDOM_CHAINS`, `HDOM_FASTA_DIR`, `HDOM_LABEL_ML` / `HDOM_LABEL_SRC` (only for
-`Label_Detect_ML_based.py --retrain`).
+Environment overrides. All optional, and the defaults are what the paper used, so a normal run
+sets none of them.
+
+| | |
+|---|---|
+| `HDOM_REFMAP`, `HDOM_CHAINS` | reference and chain folders; `hDOM_pipeline.py` sets both for you |
+| `HDOM_FASTA_DIR` | enables poly-N reference masking (`polyn_filter.py`) |
+| `HDOM_LABEL_ML` / `HDOM_LABEL_SRC` | only for `Label_Detect_ML_based.py --retrain` |
+| `HDOM_LABEL_EDIT` | folder of `{molecule}_labeledit.json` curated label lists (see §1 of METHODS.md) |
+| `HDOM_TRIM_PX` | terminal pixels dropped from scoring; default `5000/bpp` = 25 px. `0` keeps terminal labels |
+| `BBFIX` | `0` disables the backbone-repair pass entirely (see §2 of METHODS.md) |
+| `BBFIX_MAXSTEP`, `BBFIX_MINRUN`, `BBFIX_THRESH` | its three constants: `2.0` px, `10` columns, `40` |
+| `SWEEP_SM` | backbone smoothing half-window in columns, default `6` |
 
 ## Reproducibility
 

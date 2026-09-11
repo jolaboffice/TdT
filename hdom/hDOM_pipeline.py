@@ -5,7 +5,8 @@ Give it a folder of molecule TIFFs and a reference map; it returns, for every mo
 ranked chromosomal alignment from both scorers (hDOM red+label, maligner label-only) plus a
 self-contained HTML view.
 
-    python3 run_pipeline.py --molecules RAW_DIR --ref-map REF_MAP_DIR --output OUT_DIR
+    python3 hDOM_pipeline.py RAW_DIR                       # ref_map/ and out/ beside RAW_DIR
+    python3 hDOM_pipeline.py --molecules RAW_DIR --ref-map REF_MAP_DIR --output OUT_DIR
 
 RAW_DIR       2-frame 16-bit TIFFs, frame 0 = red (AT-dye DNA backbone), frame 1 = green (nick
               label).  Either `{name}.tif` or `{name}_orig.tif`; both are accepted.
@@ -51,9 +52,13 @@ def main():
     quietly producing a partial candidate pool.
     """
     ap = argparse.ArgumentParser(description='hDOM straighten + align pipeline')
-    ap.add_argument('--molecules', required=True, help='folder of molecule TIFFs')
-    ap.add_argument('--ref-map', required=True, help='folder of reference chr*.tif')
-    ap.add_argument('--output', required=True, help='destination folder')
+    # `hDOM_pipeline.py DATA_DIR` is the short form quoted in the paper. The three folders can
+    # also be named explicitly; the positional one just fills in --molecules.
+    ap.add_argument('data_directory', nargs='?', default=None,
+                    help='folder of molecule TIFFs (same as --molecules)')
+    ap.add_argument('--molecules', help='folder of molecule TIFFs')
+    ap.add_argument('--ref-map', help="folder of reference chr*.tif (default: <molecules>/../ref_map)")
+    ap.add_argument('--output', help='destination folder (default: <molecules>/../out)')
     ap.add_argument('--shards', type=int, default=1, help='parallel worker processes (default 1)')
     ap.add_argument('--bpp', type=int, default=200,
                     help='bases per reference pixel; must match how --ref-map was built (default 200)')
@@ -65,6 +70,13 @@ def main():
                     help='move molecules that fail the image checks into <output>/qc_failed/ '
                          '(default: keep them, write the sidecar, and warn)')
     a = ap.parse_args()
+
+    a.molecules = a.molecules or a.data_directory
+    if not a.molecules:
+        ap.error('give a molecule folder, positionally or with --molecules')
+    _par = os.path.dirname(os.path.abspath(a.molecules.rstrip(os.sep)))
+    a.ref_map = a.ref_map or os.path.join(_par, 'ref_map')
+    a.output = a.output or os.path.join(_par, 'out')
 
     if not shutil.which('maligner_dp'):
         die('maligner_dp not found on PATH -- the label-only scorer cannot run.')

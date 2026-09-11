@@ -50,7 +50,8 @@ BPP      = int(os.environ.get('HDOM_BPP', 200))   # bases per reference pixel; m
 C_AMP    = 846
 FWHM2SIG = 1.6651
 WIN, STEP, MAXS = 50, 25, 15
-TRIM_PX = 5000 // BPP        # discard the molecule's terminal 5 kb (both ends) from scoring (R & G)
+TRIM_PX = int(os.environ.get('HDOM_TRIM_PX', 5000 // BPP))   # terminal bases dropped from scoring
+                             # (both ends, R & G). 25 px = 5 kb; HDOM_TRIM_PX=0 keeps terminal labels.
 SCALE_MIN = float(os.environ.get('LOCAL_SCALE_MIN', 181/200))   # env override; default = pcc bpp 181
 SCALE_MAX = float(os.environ.get('LOCAL_SCALE_MAX', 220/200))   # env override; default = pcc bpp 220
 # note: maligner already searches scale 0.82-1.18, so lowering LOCAL_SCALE_MIN unlocks mal's
@@ -670,7 +671,8 @@ def main():
         F3V.to_figure3_csv(os.path.join(OUT, base + '_matching_results.csv'),
                            os.path.join(STAGE, base + '_maligner_dp.txt'))  # 14->19 col, maligner-native mal
         if a.logp:
-            print(f'      [logp] {base[:40]:40s} -> {LP.compute_logp(base, OUT)}')
+            # rerank has just rewritten the CSV, so its log(P) holds null_logp; force restores the K=5000 null.
+            print(f'      [logp] {base[:40]:40s} -> {LP.compute_logp(base, OUT, force=True)}')
         org = origins.get(base, a.tag); origin_out[base] = org; ok += 1
         def r1(m): return next((r[1] for r in rows if r[2] == m), '-')
         def sc(m): return next((r[11] for r in rows if r[2] == m), '')

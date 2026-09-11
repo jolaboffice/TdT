@@ -193,8 +193,13 @@ def _build_null_auto(M, dp, w2, chrs, seedb):
 
 
 def compute_logp(base, folder, dp=None, force=False):
-    """K=5000 null log_p for LOCAL rows of folder/{base}_matching_results.csv.
-    Writes log(P) (local rows only, = log_p) + folder/{base}_vsrandom.txt. Returns status."""
+    """K=5000 null log_p for the local rows of folder/{base}_matching_results.csv.
+
+    Scored rows are method 'local' (the ranked candidates) and 'H_local' (the homologue row), so
+    the homologue is measured against the same null as the loci it is compared with.
+    Writes log(P) on those rows (= log_p) + folder/{base}_vsrandom.txt. Returns status.
+    force=True recomputes even when a finished sidecar exists; callers that have just rewritten
+    the CSV need it, because re-ranking leaves null_logp in the log(P) column."""
     if not ALL:
         load_refs()
     side = f'{folder}/{base}_vsrandom.txt'
@@ -220,7 +225,8 @@ def compute_logp(base, folder, dp=None, force=False):
     if not rows:
         return 'nocsv'
     hd = list(rows[0].keys())
-    locs = [r for r in rows if r['method'] == 'local']
+    # H_local included so the homolog row is scored against the same null as the ranked rows.
+    locs = [r for r in rows if r['method'] in ('local', 'H_local')]
     if not locs:
         return 'nolocal'
     sc0 = float(locs[0]['scale'])

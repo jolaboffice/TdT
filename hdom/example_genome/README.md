@@ -19,7 +19,7 @@ the top-level README, unzip it, and point `--ref-map` at the folder it produces.
 ## Running it
 
     unzip hDOM_reference_map_HG002v11.zip -d ref_map
-    python3 run_pipeline.py \
+    python3 hDOM_pipeline.py \
         --molecules example_genome/molecules \
         --ref-map   ref_map \
         --output    out_genome \

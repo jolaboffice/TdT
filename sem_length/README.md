@@ -42,6 +42,7 @@ SEM against fluorescence-microscopy (FM) maps.
 | `dna_length_measurement.py` | Core: DNA backbone tracing (least-cost path in a corridor) + per-segment length (nm/bp); `DNALengthMeasurer` (headless) and `InteractiveDNAMeasurer` (matplotlib GUI). Exports `.csv` / `.maps` / `_points.json`. |
 | `run_interactive.py` | Launcher for the measurement GUI on one image. |
 | `smooth_maps_batch.py` | Smooths `.maps` (merges fragments below a bp threshold via maligner's `smooth_left_right`) into `*_sm<N>.maps`; originals untouched. |
+| `maligner_multirank_strip.R` | Draws the per-molecule rank figures: query and reference label strips on a shared bp axis, one panel per rank, with the fragment-size table. Needs R with `ggplot2`. |
 
 ## Requirements
 
@@ -51,6 +52,8 @@ numpy, scipy, scikit-image, matplotlib, tifffile, pillow.
 - The GUI tools (`pick_points.py`, `run_interactive.py`) need a display and an
   interactive matplotlib backend (Tk / `tkinter`). The measurement core runs
   headless with `matplotlib.use("Agg")`.
+- **R with `ggplot2`** — only for `maligner_multirank_strip.R`, the rank figures (step 6).
+  Nothing else in this folder needs R.
 - **maligner** — the optical-map aligner, bundled in this repository under `../maligner`
   (not on PyPI). A Linux build is included, so there is normally nothing to do:
   - put the binary on `$PATH`: `export PATH="$PWD/../maligner/build/bin:$PATH"`;
@@ -85,12 +88,41 @@ python3 stitching.py /path/to/tiles/config_<folder>.json
 python3 run_interactive.py <QD###>/<QD###>.tif --pixel-nm 2.7 --stretch 100
 
 # 4. Align each molecule's .maps to a reference (maligner_dp from ../maligner, on $PATH)
+#    The reference maps are deposited ready-built (see "Reference maps" below); build your
+#    own only for a different assembly or enzyme:
+#      make_insilico_map /path/to/chr01_p.fasta CTCGTG -o genome_unsmoothed
+#      python3 smooth_maps_batch.py /path/to/maps -m 100
 maligner_dp <QD###>/<QD###>.maps ../genome_smoothed_rm100.maps > <QD###>/<QD###>_mal.txt
 
 # 5. Smooth ref (or query) maps to a lower resolution for FM<->SEM comparison
 #    (uses the bundled malignpy; --dry-run to preview)
 python3 smooth_maps_batch.py /path/to/folder -m 500 --dry-run
+
+# 6. Rank figures: query vs smoothed/unsmoothed reference strips per molecule
+Rscript maligner_multirank_strip.R /path/to/data genome_smoothed_rm100.maps genome_unsmoothed.maps
 ```
+
+## Reference maps
+
+The in silico Nb.BssSI maps for HG002 v1.1 used in the paper are `SGM_reference_maps_HG002v11`,
+one file per smoothing threshold. They are deposited as data rather than kept in this repository,
+so step 4 needs no `make_insilico_map` run of your own:
+
+| file | fragments below … merged | for |
+|---|---|---|
+| `genome_unsmoothed.maps` | — | every predicted site |
+| `genome_smoothed_rm50.maps` | 50 bp | |
+| `genome_smoothed_rm100.maps` | 100 bp | **the map the paper aligns against** |
+| `genome_smoothed_rm150.maps` | 150 bp | |
+| `genome_FM_sm200.maps` | 200 bp | fluorescence-microscopy resolution, for FM↔SEM |
+| `genome_FM_sm600.maps` | 600 bp | fluorescence-microscopy resolution, for FM↔SEM |
+
+Each holds 46 sequences (chr1–22 in both haplotypes, plus `ChrX_m` and `ChrY_p`); `genome_FM_sm200.maps`
+additionally carries `ChrM`, for 47.
+
+**rm100** is the one used for alignment: two nick sites closer than 100 bp (about 34 nm) are a
+single spot in the SEM image, so merging them in the reference keeps them from being counted as
+false negatives. Genome-wide this merges 2.2% of fragments (808,027 → 789,874).
 
 ## Data layout
 

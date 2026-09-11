@@ -1,6 +1,6 @@
 # Metadata and dependencies. The pipeline is run as scripts from a clone rather than imported
 # as a library -- hdom/ resolves its own modules by file location -- so there is no wheel to
-# build. Install the dependencies, put maligner_dp on PATH, then run run_pipeline.py.
+# build. Install the dependencies, put maligner_dp on PATH, then run hDOM_pipeline.py.
 [project]
 name = "hdom-pipeline"
 version = "1.0.0"
