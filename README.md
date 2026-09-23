@@ -64,11 +64,16 @@ molecules are the same three, so running both answers one question: does the ans
 having narrowed the search first. It does not — chromosome, haplotype, locus, F1 and the runner-up
 haplotype come out identical.
 
-The 47 reference maps are not in this repository: 330 MB to download, about 900 MB unzipped. They
-are deposited as their own Zenodo record, separate from this software, because they are data
-derived from a public assembly rather than part of the program:
+The 47 reference maps are not in this repository: about 860 MB unzipped. They are deposited as
+their own Zenodo record, separate from this software, because they are data derived from a public
+assembly rather than part of the program:
 
-**hDOM reference map for HG002 v1.1 (Nb.BssSI, 200 bp/pixel)**
-<https://doi.org/10.5281/zenodo.22121923>
+**hDOM reference map for HG002 v1.2 (Nb.BssSI, 200 bp/pixel, sites at the true motif bp)**
+DOI: not yet assigned.
+
+This is the map `hdom/example/` and `hdom/example_genome/expected.json` are recorded against. The
+v1.1 map at <https://doi.org/10.5281/zenodo.22121923> is a different assembly with sites on a
+200 bp lattice; it runs, but it places molecule A on the other haplotype and does not reproduce
+those expected values.
 
 `hdom/example_genome/README.md` shows how to unpack and use them.

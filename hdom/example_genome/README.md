@@ -12,13 +12,14 @@ does not depend on having narrowed the search first.
 
 ## The reference map is not in this repository
 
-47 chromosome maps are about 900 MB unzipped, more than a repository should hold. Download
-`hDOM_reference_map_HG002v11.zip` (330 MB) from the reference-map Zenodo record, whose DOI is in
-the top-level README, unzip it, and point `--ref-map` at the folder it produces.
+47 chromosome maps are about 860 MB unzipped, more than a repository should hold. Download
+`hDOM_reference_map_HG002v12_1bp.zip` from the reference-map Zenodo record, which the top-level
+README points to, unzip it, and point `--ref-map` at the folder it produces. The v1.1 map is a
+different assembly and does not reproduce `expected.json`.
 
 ## Running it
 
-    unzip hDOM_reference_map_HG002v11.zip -d ref_map
+    unzip hDOM_reference_map_HG002v12_1bp.zip -d ref_map
     python3 hDOM_pipeline.py \
         --molecules example_genome/molecules \
         --ref-map   ref_map \

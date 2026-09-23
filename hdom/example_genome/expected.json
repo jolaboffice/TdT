@@ -5,23 +5,23 @@
   "local1_F1": 0.03
  },
  "A": {
-  "local1_ref": "chr20_m",
-  "local1_bp": 44743800,
+  "local1_ref": "chr20_p",
+  "local1_bp": 45595600,
   "local1_F1": 0.97,
-  "local2_ref": "chr20_p",
+  "local2_ref": "chr20_m",
   "n_labels": 21
  },
  "B": {
   "local1_ref": "chr20_p",
-  "local1_bp": 25657800,
+  "local1_bp": 25658000,
   "local1_F1": 0.97,
   "local2_ref": "chr20_m",
   "n_labels": 20
  },
  "C": {
   "local1_ref": "chr20_m",
-  "local1_bp": 41485400,
-  "local1_F1": 0.89,
+  "local1_bp": 41483200,
+  "local1_F1": 0.9,
   "local2_ref": "chr20_p",
   "n_labels": 15
  },
