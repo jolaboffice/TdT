@@ -200,10 +200,13 @@ def get_html_style():
     .comparison-item .image-container { margin: 0; padding: 0; border: none; flex: 1; background-color: #000; }
     .comparison-item img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
     .table-container { overflow-x: auto; margin-top: 15px; }
-    .matching-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-    .matching-table th { background-color: #3498db; color: #fff; text-align: right; padding: 12px; position: sticky; top: 0; }
+    /* Same font size and row heights as the .mm table index.php redraws from the CSV:
+       font-size 1.10em, data rows at padding 7px / line-height 1.42, header at 4px / 1.1.
+       These defaults keep the table looking the same when it is opened without index.php. */
+    .matching-table { width: 100%; border-collapse: collapse; font-size: 1.10em; }
+    .matching-table th { background-color: #3498db; color: #fff; text-align: right; padding: 4px 12px; line-height: 1.1; position: sticky; top: 0; }
     .matching-table th:first-child { text-align: left; }
-    .matching-table td { padding: 10px 12px; border-bottom: 1px solid #eee; text-align: right; }
+    .matching-table td { padding: 7px 12px; line-height: 1.42; border-bottom: 1px solid #eee; text-align: right; }
     .matching-table td:first-child { text-align: left; }
     .matching-table tr:hover { background-color: #f1f7ff; }
     .method-pcc { background-color: #e8f4f8; }

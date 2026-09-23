@@ -90,7 +90,7 @@ def put(yy, xx, rgb):
 for oy in range(-TR, TR+1):
     for ox in range(-TR, TR+1):
         if oy*oy + ox*ox > TR*TR: continue
-        put(np.round(_yy+oy).astype(int) + SIDE*OFF, _xx+ox, (0, 0, 0))
+        put(np.round(_yy+oy).astype(int) + SIDE*OFF, _xx+ox, (139, 0, 0))
 # QD positions: cumulative bp from .maps laid onto the trace's arc length. The trace runs from
 # the first label to the last (within 7-11 px on every molecule checked), so its whole arc length
 # corresponds to the total bp.

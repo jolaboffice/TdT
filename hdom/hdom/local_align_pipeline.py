@@ -56,7 +56,20 @@ SCALE_MIN = float(os.environ.get('LOCAL_SCALE_MIN', 181/200))   # env override; 
 SCALE_MAX = float(os.environ.get('LOCAL_SCALE_MAX', 220/200))   # env override; default = pcc bpp 220
 # note: maligner already searches scale 0.82-1.18, so lowering LOCAL_SCALE_MIN unlocks mal's
 # existing low-scale candidates for over-stretched long molecules (no calc_Q re-run needed).
-SCALE_STEP = 0.025                        # scale re-optimization grid step
+SCALE_STEP = float(os.environ.get('LOCAL_SCALE_STEP', 0.025))   # scale re-optimization grid step
+# Two-stage scale search, the way the pcc scan does it: sweep the coarse grid, then refine around
+# the winner at LOCAL_SCALE_FINE. Cost is what dominates the re-rank -- opt_ps calls local_ccr once
+# per scale point -- so a flat 0.005 grid is 40 points and 101 s per molecule, while coarse+refine
+# is 13 points. 0 (the default) keeps the single coarse pass.
+SCALE_FINE = float(os.environ.get('LOCAL_SCALE_FINE', 0))
+# How many coarse points to refine around. 1 follows only the coarse winner, which misses the
+# molecules whose scale-vs-score curve has more than one peak: on a 50-molecule check, refining
+# the winner alone reproduced the flat-0.005 answer for 48/50, and the two it missed had their
+# true optimum in a different coarse cell (scale 1.030 vs 0.910).
+SCALE_TOPK = int(os.environ.get('LOCAL_SCALE_TOPK', 1))
+# 0.025 is 5x coarser than the pcc scan, which sweeps 1 bpp = 0.005. Half a grid cell (0.0125)
+# displaces the far end of a 1,000 px molecule by 12 px, which is why every tile needs a shift:
+# the median |shift| a true locus asks for is 6 px, and refining the grid to 0.005 halves it.
 _SCALE_ANCHOR = 181 / 200                  # grid anchored here (=default SCALE_MIN 0.905) so that
                                            # lowering SCALE_MIN only ADDS low scales without shifting
                                            # existing grid points (avoids discretization ranking flips).
@@ -80,6 +93,9 @@ HOM_TOL_BP = 30000
 # scale that matches more labels win even where the red profile disagrees, which costs rank-1
 # accuracy; set OPT_COMBINED=0 for the F1-only behaviour.
 OPT_COMBINED = os.environ.get('OPT_COMBINED', '1') == '1'
+# Re-centre the offset window on the shift a scale change implies (see _centers).
+# SCALE_ANCHORED=0 restores the pre-2026-09 behaviour (window always at the candidate).
+SCALE_ANCHORED = os.environ.get('SCALE_ANCHORED', '1') != '0'
 # MAL_KEEP_SCALE=1 (env): for maligner-derived candidates, keep maligner's own scale value
 # (re-optimize OFFSET only, not scale) instead of grid-searching scale in opt_ps. Default off.
 MAL_KEEP_SCALE = os.environ.get('MAL_KEEP_SCALE', '0') == '1'
@@ -101,8 +117,11 @@ def _is_polyn(ref, ab, w_px, scale):
     """
     return bool(POLYN_EXCLUDE and _PN is not None
                 and _PN.overlaps_n(str(ref), int(ab), int(w_px), float(scale), _NREG, bpp=BPP))
+# shift_gap and w_coh are the shift roughness the score multiplies in (shift_pen), carried in the
+# CSV so it shows the penalty the ranking applied. local_ccr_j returns both, so carrying them
+# costs nothing.
 COLS = ['rank','ref_name','method','aligned_bp','dir','scale','cc_r','local_cc_r',
-        'cc_g','cc_rg','cc_rg2','log(P)','misc','F1']
+        'cc_g','cc_rg','cc_rg2','log(P)','misc','F1','shift_gap','w_coh']
 
 # ---------- ML green-label detection (optional: --ml-labels) ----------
 # Default = classic refined_green_peaks. --ml-labels swaps in the adaptive RandomForest
@@ -176,7 +195,10 @@ def ref_peaks(ref):
     return _refpk[ref]
 
 
-TRIM_RULE = os.environ.get('HDOM_TRIM_RULE', 'window')
+# 'outermost' keeps every terminal label but the outermost one at each end. A fixed 5 kb window
+# can also take a second terminal label that is a real interior site; HDOM_TRIM_RULE=window
+# selects that fixed window instead.
+TRIM_RULE = os.environ.get('HDOM_TRIM_RULE', 'outermost')
 def terminal_cuts(dp, w2, trim):
     """How much to cut at each end, in molecule pixels.
 
@@ -185,6 +207,12 @@ def terminal_cuts(dp, w2, trim):
     though it is a real site -- keeps its say. A clamped end is exempt and keeps the full cut: two
     labels on one pixel, or two on the image edge, are the arc-length resampling artefact the trim
     exists for, not evidence.
+
+    The exemption is itself bounded. Labels within a pixel of the outermost one are that same pile
+    -- one label, however many columns the resampling stacked onto it -- and a label beyond the
+    pile is an interior site that was never terminal. Where such a label exists, the cut stops just
+    past the pile and keeps it; where none does, the full window is cut as before, so the scored
+    reference window is unchanged for every end that has nothing to save.
 
     Returns (cut_left, cut_right); both default to `trim`, so callers are unchanged under 'window'.
     """
@@ -197,9 +225,19 @@ def terminal_cuts(dp, w2, trim):
         q = [int(round(v)) for v in side]
         if len(q) != len(set(q)): return True                     # duplicate pixels = clamped
         return sum(1 for v in q if abs(v - edge) <= 1) >= 2
-    tl = trim if keep_full(L, 0) else int(min(L)) + 1
-    tr = trim if keep_full(Rr, w2 - 1) else int(w2 - 1 - max(Rr)) + 1
-    return tl, tr
+    def past_pile(side, left):
+        """Cut past the outermost pile, or None when the pile is the whole window (nothing saved)."""
+        q = [int(round(v)) for v in side]
+        o = min(q) if left else max(q)
+        if all(abs(v - o) <= 1 for v in q): return None           # no interior label to rescue
+        e = max(v for v in q if abs(v - o) <= 1) if left else min(v for v in q if abs(v - o) <= 1)
+        return min(trim, (e + 1) if left else (w2 - 1 - e + 1))
+    def cut(side, left, edge):
+        if not keep_full(side, edge):
+            return (int(min(side)) + 1) if left else (int(w2 - 1 - max(side)) + 1)
+        p = past_pile(side, left) if side else None
+        return trim if p is None else p
+    return cut(L, True, 0), cut(Rr, False, w2 - 1)
 
 def _mapped_ref(ref_prof, MOL, aligned_bp, scale, direction):
     """The reference resampled onto the molecule's pixel grid at a given placement.
@@ -218,25 +256,47 @@ def _mapped_ref(ref_prof, MOL, aligned_bp, scale, direction):
     hi = np.minimum(lo + 1, N - 1)
     return ref_prof[lo] * (1.0 - frac) + ref_prof[hi] * frac
 
-def local_ccr(mol_red, ref_prof, aligned_bp, scale, direction):
-    """tile-wise red Pearson with local +-3kb shift; mean of per-tile best."""
+def local_ccr_j(mol_red, ref_prof, aligned_bp, scale, direction):
+    """tile-wise red Pearson with local +-3kb shift: (mean of per-tile best, shift roughness).
+
+    The roughness is the mean |difference| between the shifts chosen by neighbouring tiles, in px.
+    It costs nothing: the shifts are the argmax the loop already takes. A true locus needs a shift
+    that drifts slowly (residual stretch), so its neighbouring tiles agree; a wrong locus finds its
+    per-tile optimum in an unrelated place each time, so its shifts jump. Measured as an ADJACENT
+    difference, not a spread: a locus whose shift ramps across the whole search range is smooth.
+    """
     MOL = len(mol_red); mf = _mapped_ref(ref_prof, MOL, aligned_bp, scale, direction)
     # green-only trimming: RED uses the full molecule (backbone at ends is real signal);
     # only the green label-set (F1) drops the terminal 5 kb. So no red trim here.
-    vals = []
+    vals = []; shifts = []
     for st in range(0, MOL - WIN, STEP):
         a = mol_red[st:st+WIN]
         if np.std(a) < 1e-6: continue
-        best = -9.0
+        best = -9.0; bs = None
         for s in range(-MAXS, MAXS+1, 3):
             l = st + s
             if l < 0 or l + WIN > len(mf): continue
             bb = mf[l:l+WIN]
             if np.std(bb) < 1e-6: continue
             c = np.corrcoef(a, bb)[0, 1]
-            if c > best: best = c
-        if best > -9: vals.append(best)
-    return float(np.mean(vals)) if vals else np.nan
+            if c > best: best = c; bs = s
+        if best > -9: vals.append(best); shifts.append(bs)
+    if not vals: return np.nan, np.nan
+    jump = float(np.abs(np.diff(shifts)).mean()) if len(shifts) > 1 else 0.0
+    return float(np.mean(vals)), jump
+
+def local_ccr(mol_red, ref_prof, aligned_bp, scale, direction):
+    """tile-wise red Pearson with local +-3kb shift; mean of per-tile best."""
+    return local_ccr_j(mol_red, ref_prof, aligned_bp, scale, direction)[0]
+
+# SHIFT_PEN=1 multiplies the ranking score by (1 - roughness / full search width), so a candidate
+# only keeps the correlation its local shifts EARNED COHERENTLY. Reported cc_rL is untouched: this
+# changes the order of candidates, not the number printed in the table. Off by default.
+SHIFT_PEN = os.environ.get('SHIFT_PEN', '1') == '1'    # production default; SHIFT_PEN=0 restores the plain product
+def shift_pen(jump):
+    # env is read per call so a driver can score both arms in one process
+    if os.environ.get('SHIFT_PEN', '1' if SHIFT_PEN else '0') != '1' or jump != jump: return 1.0
+    return max(0.0, 1.0 - float(jump) / (2.0 * MAXS))
 
 def global_ccr(mol_red, ref_prof, aligned_bp, scale, direction):
     """whole-molecule red Pearson at the alignment (single corrcoef)."""
@@ -394,17 +454,18 @@ def homolog_H(method, ranked, mol_red, mol_green, dp, w2, lpfn, hom_tol=HOM_TOL_
         f1, ab, sc, FP = best
         if f1 < 0: return None
         try:
-            lc = local_ccr(mol_red, rp_red, ab, sc, hdir)
+            lc, _jmp = local_ccr_j(mol_red, rp_red, ab, sc, hdir)
         except Exception:
             return None
         if np.isnan(lc): return None
-        lc = max(lc, 0.0); score = lc * f1
+        lc = max(lc, 0.0); score = lc * f1 * shift_pen(_jmp)
         gcc = global_ccr(mol_red, rp_red, ab, sc, hdir)
         _, cg2 = global_cc_rg(mol_red, mol_green, hom, ab, sc, hdir)
         ok2 = (gcc == gcc and cg2 == cg2)
         return ['H', hom, mlab, ab, hdir, round(sc, 2), round(gcc, 2) if gcc == gcc else '', round(lc, 2),
                 round(cg2, 2) if cg2 == cg2 else '', round(gcc * cg2, 3) if ok2 else '',
-                round(max(gcc, 0.0) * cg2 * cg2, 3) if ok2 else '', lpfn(score), FP, round(f1, 2)]
+                round(max(gcc, 0.0) * cg2 * cg2, 3) if ok2 else '', lpfn(score), FP, round(f1, 2),
+                '' if _jmp != _jmp else f'{_jmp:.2f}', f'{shift_pen(_jmp):.3f}']
     # mDOM (C1): no re-opt, evaluate at lifted position with rank1's scale
     sc = float(a['sc']); ab = hpos
     f1, FP = f1_at(ab, hdir, sc, 0)
@@ -415,7 +476,7 @@ def homolog_H(method, ranked, mol_red, mol_green, dp, w2, lpfn, hom_tol=HOM_TOL_
     ok2 = (cg2 == cg2)
     return ['H', hom, mlab, ab, hdir, round(sc, 2), round(gcc, 2), '',
             round(cg2, 2) if ok2 else '', round(gcc * cg2, 3) if ok2 else '',
-            round(max(gcc, 0.0) * cg2 * cg2, 3) if ok2 else '', lpfn(score), FP, round(f1, 2)]
+            round(max(gcc, 0.0) * cg2 * cg2, 3) if ok2 else '', lpfn(score), FP, round(f1, 2), '', '']
 
 # ---------- [3]-[5] rerank one molecule ----------
 def rerank(tif, csvp):
@@ -446,37 +507,82 @@ def rerank(tif, csvp):
         return f1_gen(ref, ab, di, sc, TRIM_PX)
 
     _SCALES = _scale_grid()
-    def opt_ps(ref, ab0, di, trim):
-        """re-optimize aligned_bp (+-5 kb) and scale ([0.905,1.10]). Returns (bestF1, ab, scale, FP).
+    def _centers(ab0, sc0, scv):
+        """Where to centre the offset window when the trial scale differs from the candidate's.
+
+        The placement maps molecule pixel x to reference pixel  shift + scale*u,  u = x (dir +1) or
+        w2-1-x (dir -1), with shift = aligned_bp/BPP. So the u=0 end sits at aligned_bp and the
+        u=w2-1 end at aligned_bp + scale*(w2-1): position and scale are COUPLED. Changing the scale
+        by ds moves the far end by ds*(w2-1) pixels, i.e. ds*(w2-1)*BPP bases. Searching the scale
+        grid while holding the window at ab0 therefore only ever evaluates the trial scale at the
+        wrong place -- for a 392 kb molecule a 0.074 scale step needs a 29 kb shift, six times the
+        +-5 kb window, so the true locus is unreachable and a poor scale wins by default.
+
+        Which end is anchored is not known (it depends on where the candidate's evidence actually
+        sits), so both ends and the midpoint are tried: t = 0, 0.5, 1 of the implied shift. Cost is
+        3x the offset loop, not a wider window, so a wrong candidate cannot wander further than
+        before -- every centre stays on the line the scale change itself defines.
+        """
+        d = -(scv - sc0) * (w2 - 1) * BPP
+        # a maligner row whose scale came out non-finite (degenerate query map: too few fragments)
+        # would make d inf and int(round(...)) raise; such a candidate just keeps its own centre.
+        if not np.isfinite(d): return [ab0]
+        return [ab0, ab0 + 0.5 * d, ab0 + d] if SCALE_ANCHORED and abs(d) >= BPP else [ab0]
+    def opt_ps(ref, ab0, di, trim, sc0=None):
+        """re-optimize aligned_bp (+-5 kb per centre) and scale ([0.905,1.10]). Returns (bestF1, ab, scale, FP).
         OPT_COMBINED: pick the SCALE by local_cc_r*F1 (not F1 alone) so a marginally-higher-F1 but
         red-poor scale isn't chosen (fixes homolog scale mismatch). Offset stays F1-optimized per scale."""
+        _sc0 = 1.0 if sc0 is None else float(sc0)
         if OPT_COMBINED:
             # exact: for each scale, F1-best offset, then local_cc_r there; pick max local_cc_r*F1
             rpr = ref_red(ref)
-            best = (-1.0, ab0, 1.0, 0, -1.0)   # combscore, ab, sc, FP, f1
-            for scv in _SCALES:
+            def _eval(scv):
                 bf1 = -1.0; bab = ab0; bfp = 0
-                for doff in range(-off_px, off_px + 1, OFF_STEP):
-                    ab2 = ab0 + doff * BPP
+                for _c in _centers(ab0, _sc0, scv):
+                  for doff in range(-off_px, off_px + 1, OFF_STEP):
+                    ab2 = int(round(_c)) + doff * BPP
                     if ab2 < 0: continue
                     try:
                         f12, FP2 = f1_gen(ref, ab2, di, scv, trim)
                     except Exception:
                         continue
                     if f12 > bf1: bf1, bab, bfp = f12, ab2, FP2
-                if bf1 < 0 or rpr is None: continue
+                if bf1 < 0 or rpr is None: return None
                 try:
                     lc = local_ccr(mol_red, rpr, bab, scv, di)
                 except Exception:
-                    continue
-                if np.isnan(lc): continue
-                cs = max(lc, 0.0) * bf1
-                if cs > best[0]: best = (cs, bab, float(scv), bfp, bf1)
+                    return None
+                if np.isnan(lc): return None
+                return (max(lc, 0.0) * bf1, bab, float(scv), bfp, bf1)
+            best = (-1.0, ab0, 1.0, 0, -1.0)   # combscore, ab, sc, FP, f1
+            seen = set(); coarse = []
+            for scv in _SCALES:
+                seen.add(round(float(scv), 6))
+                r = _eval(scv)
+                if not r: continue
+                coarse.append(r)
+                if r[0] > best[0]: best = r
+            if SCALE_FINE > 0 and coarse:
+                # refine one coarse cell either side of the TOPK best coarse points, so a curve with
+                # more than one peak is followed in every candidate basin, not just the leading one
+                coarse.sort(key=lambda r: -r[0])
+                for r0 in coarse[:max(1, SCALE_TOPK)]:
+                    lo = max(SCALE_MIN, r0[2] - SCALE_STEP)
+                    hi = min(SCALE_MAX, r0[2] + SCALE_STEP)
+                    v = lo
+                    while v <= hi + 1e-9:
+                        key = round(v, 6)
+                        if key not in seen:
+                            seen.add(key)
+                            r = _eval(v)
+                            if r and r[0] > best[0]: best = r
+                        v += SCALE_FINE
             return (best[4], best[1], best[2], best[3])
         best = (-1.0, ab0, 1.0, 0)
         for scv in _SCALES:
+          for _c in _centers(ab0, _sc0, scv):
             for doff in range(-off_px, off_px + 1, OFF_STEP):
-                ab2 = ab0 + doff * BPP
+                ab2 = int(round(_c)) + doff * BPP
                 if ab2 < 0: continue
                 try:
                     f12, FP2 = f1_gen(ref, ab2, di, scv, trim)
@@ -558,14 +664,16 @@ def rerank(tif, csvp):
             except Exception: _msc = 1.0
             f1, ab, FP = opt_offset(ref, ab0, di, _msc, TRIM_PX); sc = _msc
         else:
-            f1, ab, sc, FP = opt_ps(ref, ab0, di, TRIM_PX)
+            try: _c_sc = float(r['scale'])
+            except Exception: _c_sc = 1.0
+            f1, ab, sc, FP = opt_ps(ref, ab0, di, TRIM_PX, _c_sc)
         if f1 < 0: continue
         try:
-            lc = local_ccr(mol_red, rp_red, ab, sc, di)
+            lc, _jmp = local_ccr_j(mol_red, rp_red, ab, sc, di)
         except Exception:
             continue
         if np.isnan(lc): continue
-        lc = max(lc, 0.0); score = lc * f1
+        lc = max(lc, 0.0); score = lc * f1 * shift_pen(_jmp)
         key = _key(ref, ab)
         pr = pcc_by_key.get(key)
         if pr is not None:
@@ -581,7 +689,8 @@ def rerank(tif, csvp):
             ccrg2 = round(max(gcc, 0.0) * cg2 * cg2, 3) if ok2 else ''
         if key not in cand or score > cand[key]['sc_l']:
             cand[key] = dict(ref=ref, ab=ab, di=di, sc=round(sc,2), lc=round(lc,2), f1=round(f1,2), FP=FP,
-                             gcc=round(gcc,2) if gcc==gcc else '', cc_g=ccg, cc_rg=ccrg, cc_rg2=ccrg2, sc_l=score)
+                             gcc=round(gcc,2) if gcc==gcc else '', cc_g=ccg, cc_rg=ccrg, cc_rg2=ccrg2, sc_l=score,
+                             jmp=_jmp, wj=shift_pen(_jmp))
     _lcand = [d for d in cand.values() if not _is_polyn(d['ref'], d['ab'], w2, d['sc'])]
     local = _dedup_locus(sorted(_lcand, key=lambda d: -d['sc_l']))
     if not local: return None
@@ -596,12 +705,13 @@ def rerank(tif, csvp):
     out = []
     for i, d in enumerate(local, 1):
         out.append([i, d['ref'], 'local', d['ab'], d['di'], d['sc'], d['gcc'], d['lc'],
-                    d['cc_g'], d['cc_rg'], d['cc_rg2'], d['logp'], d['FP'], d['f1']])
+                    d['cc_g'], d['cc_rg'], d['cc_rg2'], d['logp'], d['FP'], d['f1'],
+                    '' if d['jmp'] != d['jmp'] else f"{d['jmp']:.2f}", f"{d['wj']:.3f}"])
     if Hloc:
         out.append(Hloc)
     for i, d in enumerate(mdom, 1):
         out.append([i, d['ref'], 'mDOM', d['ab'], d['di'], d['sc'], d['cc_r'], '',
-                    d['cc_g'], d['cc_rg'], d['cc_rg2'], d['logp'], d['FP'], d['f1']])
+                    d['cc_g'], d['cc_rg'], d['cc_rg2'], d['logp'], d['FP'], d['f1'], '', ''])
     if Hmd:
         out.append(Hmd)
     _i = 0
@@ -609,14 +719,14 @@ def rerank(tif, csvp):
         if _is_polyn(r['ref_name'], int(r['aligned_bp']), w2, float(r['scale'])): continue
         _i += 1
         out.append([_i, r['ref_name'], 'mal', int(r['aligned_bp']), int(r['dir']), r['scale'],
-                    '', '', '', '', '', r.get('log(P)',''), r.get('misc',''), ''])
+                    '', '', '', '', '', r.get('log(P)',''), r.get('misc',''), '', '', ''])
     _i = 0
     for _, r in pcc.iterrows():
         if _is_polyn(r['ref_name'], int(r['aligned_bp']), w2, float(r['scale'])): continue
         _i += 1
         out.append([_i, r['ref_name'], 'pcc', int(r['aligned_bp']), int(r['dir']), r['scale'],
                     r.get('cc_r',''), '', r.get('cc_g',''), r.get('cc_rg',''), r.get('cc_rg2',''),
-                    r.get('log(P)',''), r.get('misc',''), ''])
+                    r.get('log(P)',''), r.get('misc',''), '', '', ''])
     return out
 
 # ---------- driver ----------

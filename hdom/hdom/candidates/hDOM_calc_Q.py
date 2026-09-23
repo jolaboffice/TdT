@@ -8,6 +8,12 @@ Calls hDOM_mal.py and hDOM_pcc_ft.py as external commands.
 """
 
 import os
+# Retrieval depth. The deployed default is the ten best candidates from each search; a molecule
+# whose locus falls outside that pool can be re-run with PCC_TOPN / MAL_TOPN raised without
+# touching anything else. SCORE_GAP is the break that truncates a candidate list -- raise it to
+# keep the full list. Defaults reproduce the published configuration exactly.
+PCC_TOPN   = int(os.environ.get('PCC_TOPN', '10'))
+_SCORE_GAP = float(os.environ.get('SCORE_GAP', '10.0'))
 import sys
 import argparse
 import subprocess
@@ -884,7 +890,7 @@ def ensure_matching_csvs(tif_files, tif_data_folder, reference_files, bpp, start
                         pcc_df.loc[mask, 'cc_rg'] = pcc_df.loc[mask, 'cc_r'] * pcc_df.loc[mask, 'cc_g']
                         pcc_df.loc[mask, 'cc_rg2'] = pcc_df.loc[mask, 'cc_r'] * (pcc_df.loc[mask, 'cc_g'] ** 2)
                     pcc_df = pcc_df.sort_values(by='cc_rg2', ascending=False).reset_index(drop=True)
-                    pcc_df = pcc_df.head(10)
+                    pcc_df = pcc_df.head(PCC_TOPN)
                 mal_df = combined_df[combined_df['method'] == 'mal'].copy()
                 combined_df = pd.concat([pcc_df, mal_df], ignore_index=True)
             
@@ -893,7 +899,7 @@ def ensure_matching_csvs(tif_files, tif_data_folder, reference_files, bpp, start
             top1 = analysis_df.iloc[0] if not analysis_df.empty else None
             top2 = analysis_df.iloc[1] if len(analysis_df) > 1 else None
 
-            pcc_part = combined_df[combined_df['method'] == 'pcc'].sort_values(by='cc_rg2', ascending=False).head(10)
+            pcc_part = combined_df[combined_df['method'] == 'pcc'].sort_values(by='cc_rg2', ascending=False).head(PCC_TOPN)
             mal_part = combined_df[combined_df['method'] == 'mal']
             df_to_save = pd.concat([pcc_part, mal_part], ignore_index=True)
             
@@ -911,7 +917,7 @@ def ensure_matching_csvs(tif_files, tif_data_folder, reference_files, bpp, start
             # Cut off each method group when the 'score' (log(P) for PCC, m-score for mal)
             # drops by >= 10 from the previous row. The first big-gap row is kept, then stop.
             # e.g. scores -43.32, -42.87, -0.67  -> keep ranks 1,2,3 and drop the rest.
-            SCORE_GAP = 10.0
+            SCORE_GAP = _SCORE_GAP
             keep_index = []
             for _method in ('pcc', 'mal'):
                 grp = df_to_save[df_to_save['method'] == _method].sort_values('rank')

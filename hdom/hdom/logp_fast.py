@@ -68,7 +68,21 @@ def local_ccr_batch(xp, M, ref_prof, pos_bp, scale, direction):
     best = c.max(axis=1)                                                    # (B, nt)
     fm = mvalid[None, :] & xp.isfinite(best)
     num = xp.where(fm, best, 0.0).sum(axis=1); den = fm.sum(axis=1)
-    return xp.where(den > 0, num / xp.maximum(den, 1), xp.nan)
+    out = xp.where(den > 0, num / xp.maximum(den, 1), xp.nan)
+    if not P.SHIFT_PEN:
+        return out
+    # SHIFT_PEN: the argmax the max above already found. Tile-to-tile
+    # roughness of those shifts, normalised by the full search width (2*MAXS px), multiplies the
+    # score -- the same factor local_align_pipeline.shift_pen applies to a real candidate, so the
+    # null is drawn under the scoring rule it is meant to calibrate.
+    bi = c.argmax(axis=1)                                                   # (B, nt)
+    sh = M['shifts_x'][bi].astype(xp.float64)                               # (B, nt) px
+    ok2 = fm[:, :-1] & fm[:, 1:]
+    dif = xp.abs(sh[:, 1:] - sh[:, :-1])
+    cnt = ok2.sum(axis=1)
+    jump = xp.where(cnt > 0, xp.where(ok2, dif, 0.0).sum(axis=1) / xp.maximum(cnt, 1), 0.0)
+    fac = xp.clip(1.0 - jump / (2.0 * P.MAXS), 0.0, 1.0)
+    return out * fac
 
 
 def label_f1_fast(dp, w2, pk_sorted, rl, aligned_bp, direction, scale, trim_px):

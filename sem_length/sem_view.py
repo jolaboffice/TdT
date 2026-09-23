@@ -66,7 +66,10 @@ SRC = OUT = TEMPLATE_INDEX = None
 # detected per figure -- the width varies (2400..7200 px) and the axes frame is anti-aliased,
 # so a fixed crop drags in the grey border lines.
 BAND = {'query': (170, 215), 'ref_sm': (215, 260), 'ref_raw': (260, 305)}
-W = 2000                         # common display width for every panel
+# Common display width for every panel. The source rank figures are 2400-3780 px wide, so a
+# narrower W merges label ticks that sit a few pixels apart and the molecule then shows fewer
+# labels than its .maps has (QD065: 18 -> 7). Keep this at or above the widest source figure.
+W = int(os.environ.get('SEM_VIEW_W', 6000))
 HALF = 26                        # data panel half-height in source pixels around the trace
 N_PANEL = 2                      # ref panels drawn as fixed rows; the rest stay in the selector
 
@@ -118,10 +121,21 @@ def sem_strip(folder, qd, flip=False):
 
 
 def band_x(arr):
-    """x extent of the black strip, inset by a pixel to drop the anti-aliased frame."""
+    """The band's drawn extent in x.
+
+    The pure-black run gives the axis area, but the outermost label ticks are drawn a couple of
+    pixels beyond it, and clipping to the black run alone drops them (QD025 loses its first and
+    last of 14). Widen the range to cover any green tick as well.
+    """
     c = (arr.max(axis=2) < 25).mean(axis=0)
     x = np.where(c > 0.5)[0]
-    return int(x.min()) + 1, int(x.max()) - 1
+    lo, hi = int(x.min()) + 1, int(x.max()) - 1
+    g = ((arr[:, :, 1].astype(int) - arr[:, :, 0].astype(int)) > 60).any(axis=0)
+    gx = np.where(g)[0]
+    if len(gx):
+        lo = min(lo, int(gx.min())); hi = max(hi, int(gx.max()))
+    return lo, hi
+
 
 
 def query_ticks(arr):

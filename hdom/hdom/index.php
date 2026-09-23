@@ -1,10 +1,15 @@
 <?php
-register_shutdown_function(function(){ if(($_SERVER['REQUEST_METHOD']??'')==='POST') return; $h=(($_GET['file']??'')!=='')?'index.php':'../'; echo '<a href="'.$h.'" style="position:fixed;top:6px;left:6px;z-index:2147483647;background:#34495e;color:#fff;padding:6px 14px;border-radius:5px;text-decoration:none;font:bold 13px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)">&#8593; Up</a>'; });
+register_shutdown_function(function(){ if(($_SERVER['REQUEST_METHOD']??'')==='POST' || ($_GET['file']??'')==='') return; $h=$GLOBALS['HDOM_UP_HREF'] ?? 'index.php'; echo '<a href="'.$h.'" style="position:fixed;top:6px;left:6px;z-index:2147483647;background:#34495e;color:#fff;padding:6px 14px;border-radius:5px;text-decoration:none;font:bold 13px sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.4)">&#8593; Up</a>'; });
 // 4-method local-align comparison index. Serves <base>_view_ytb.html, or <base>_view.html:
-// the analysis server writes the first, hDOM_pipeline.py writes the second, and one viewer has to
+// the analysis server writes the first, run_pipeline.py writes the second, and one viewer has to
 // read both or a released run lands on a 404.
 // and re-renders the matching table (local / mDOM / mal / pcc + H) from the CSV.
 $base_path = __DIR__;
+// Helpers that point prev/next, Index and Up at the Total list when the page was entered from it (?from=total).
+foreach (array(__DIR__.'/../_total_nav.php', __DIR__.'/../../_total_nav.php') as $__tn)
+    if (is_file($__tn)) { require_once $__tn; break; }
+foreach (array(__DIR__.'/../_summary_sync.php', __DIR__.'/../../_summary_sync.php') as $__ss)
+    if (is_file($__ss)) { require_once $__ss; break; }
 header('Cache-Control: no-store, no-cache, must-revalidate');
 
 // ---- mark-root: all *_marks.json live at the DOM_local root (the ancestor dir named 'local'),
@@ -13,8 +18,8 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
 // (non-existent, apache-unwritable) json and silently vanish, and reclassify (which reads local/*)
 // would never see them. Walk up to 'local' so every folder shares the same canonical mark files.
 $__p = $base_path;
-while ($__p && $__p !== '/' && $__p !== '.' && basename($__p) !== 'local' && basename($__p) !== 'ML_label_local_ccr') { $__p = dirname($__p); }
-$MARK_ROOT = (basename($__p) === 'local' || basename($__p) === 'ML_label_local_ccr') ? $__p : dirname($base_path);
+while ($__p && $__p !== '/' && $__p !== '.' && basename($__p) !== 'local' && basename($__p) !== 'ML_label_local_ccr' && basename($__p) !== 'hDOM_HG002_v1.2_1bp') { $__p = dirname($__p); }
+$MARK_ROOT = (basename($__p) === 'local' || basename($__p) === 'ML_label_local_ccr' || basename($__p) === 'hDOM_HG002_v1.2_1bp') ? $__p : dirname($base_path);
 
 // ---- Cplus marking (C group only): server-side flag, survives navigation ----
 // Marks live at local/cplus_marks.json (root, survives reclassify wipe) and must be
@@ -24,6 +29,25 @@ $MARK_ROOT = (basename($__p) === 'local' || basename($__p) === 'ML_label_local_c
 $IS_C = in_array(basename($base_path), array('C', 'C_longmolecules', 'C_longer_than_200kb', 'candidate_recovered', 'linearization', 'others', 'Long_Molecules', 'C_freshscan_income'), true)
      || basename(dirname($base_path)) === 'fresh_reclass';
 $CPLUS_JSON = $MARK_ROOT . '/cplus_marks.json';
+// When the Total list was sorted, the neighbours follow that order. The Total page leaves
+// navorder:total = {m:[molecule...], p:{molecule:"group/sub/"}} in localStorage; the paths are
+// rebuilt against this page's relative depth (rel). A stored list whose length no longer matches
+// the current total is stale and is ignored.
+function hdom_total_navjs($T){
+    return '<script>(function(){try{var N='.(int)$T['n'].';var REL='.json_encode($T['rel']).';'
+      . 'var o=JSON.parse(localStorage.getItem("navorder:total")||"null");'
+      . 'if(!o||!o.m||o.m.length!==N||!o.p)return;'
+      . 'var cur=new URLSearchParams(location.search).get("file");if(!cur)return;'
+      . 'var i=o.m.indexOf(cur);if(i<0)return;'
+      . 'function href(b){return REL+o.p[b]+"index.php?file="+encodeURIComponent(b)+"&from=total";}'
+      . 'function setn(id,b){var el=document.getElementById(id);if(!el)return;'
+      . 'if(b==null){el.classList.add("disabled");el.removeAttribute("href");}'
+      . 'else{el.classList.remove("disabled");el.setAttribute("href",href(b));}}'
+      . 'function go(){setn("nav-prev",i>0?o.m[i-1]:null);setn("nav-next",i<N-1?o.m[i+1]:null);'
+      . 'var jn=document.querySelector(".jump-num");if(jn)jn.textContent=(i+1);}'
+      . 'if(document.getElementById("nav-next"))go();else document.addEventListener("DOMContentLoaded",go);'
+      . '}catch(e){}})();<\/script>';
+}
 function cplus_load($p){ if(!is_file($p)) return array(); $j=json_decode((string)file_get_contents($p),true); return is_array($j)?$j:array(); }
 function cplus_save($p,$j){ $fp=fopen($p,'c+'); if(!$fp) return; flock($fp,LOCK_EX); ftruncate($fp,0); rewind($fp);
     fwrite($fp,json_encode($j)); fflush($fp); flock($fp,LOCK_UN); fclose($fp); }
@@ -125,55 +149,71 @@ function hdom_table_from_csv($csv) {
     $bpf = function($r){ return (isset($r['aligned_bp']) && is_numeric($r['aligned_bp'])) ? number_format((int)$r['aligned_bp']) : htmlspecialchars((string)($r['aligned_bp']??'')); };
     $drf = function($r){ return (isset($r['dir']) && is_numeric($r['dir'])) ? (string)(int)$r['dir'] : htmlspecialchars((string)($r['dir']??'')); };
     $txf = function($r,$k){ return (isset($r[$k]) && $r[$k]!=='') ? htmlspecialchars((string)$r[$k]) : ''; };
+    // shift_gap is the mean disagreement in px between the best shift of neighbouring windows.
+    // w_coh = 1 - shift_gap/(2*MAXS) is the factor the score is multiplied by, 1 being perfectly
+    // smooth. The table carries the factor only.
+    $scf = function($r){
+        $w = $r['w_coh'] ?? ''; 
+        return ($w === '' || !is_numeric($w)) ? '' : sprintf('%.2f', (float)$w); };
 
-    // Row colours are unchanged: hDOM=method-local(#e8f4f8), mal=method-mal(#fff4e6). Only the mal header is a muted tan.
+    // Row colours: hDOM = method-local (#e8f4f8), mal = method-mal (#fff4e6). The mal header is a quieter tan.
     $css = '<style>'
+      .'.mm{font-size:1.10em}'                      // matches the size of the saved figure
       .'.mm .hdr-hdom td{background:#3498db;color:#fff;font-weight:bold}'
       .'.mm .hdr-mal td{background:#a67c52;color:#fff;font-weight:bold}'
       .'.mm .osep td{background:#34495e;color:#fff;font-weight:bold;text-align:left}'
       .'.mm .hdr-hdom,.mm .hdr-mal,.mm .osep{cursor:default}'
-      .'.mm td:nth-child(n+6),.mm th:nth-child(n+6){width:9.5%;min-width:56px;text-align:center;box-sizing:border-box}'  // scale..h_score and the mal columns share one width (7 cols x 9.5% = 66.5%)
-      .'.mm thead th,.mm .hdr-hdom td,.mm .hdr-mal td{padding-top:2px !important;padding-bottom:2px !important;line-height:1.25 !important}'  // header row: same font size, thinner vertically only
-      // Data rows (hDOM/mal) only, at 0.9x height: padding 10+10 + line 17.3 = 37.3px -> 8.1+8.1+17.3 = 33.5px.
-      // The header row (thead th), the group headers (hdr-*) and the Other ranks separator (osep) are
-      // excluded, so the rule above still applies to them.
-      .'.mm tbody tr:not(.hdr-hdom):not(.hdr-mal):not(.osep) td{padding-top:8.1px !important;padding-bottom:8.1px !important;line-height:1.2 !important}'
+      .'.mm td:nth-child(n+6),.mm th:nth-child(n+6){width:7.30%;min-width:56px;text-align:center;box-sizing:border-box}'
+      .'.mm td:nth-child(12),.mm th:nth-child(12){width:8.0%;min-width:64px}'  // scale..h_score and mal share one uniform width (7 columns x 9.5% = 66.5%)
+      .'.mm thead th,.mm .hdr-hdom td,.mm .hdr-mal td{padding-top:4px !important;padding-bottom:4px !important;line-height:1.1 !important}'  // header row: same font size, thinner vertically
+      // Data rows (hDOM/mal) only, at 0.9x height: padding 8.1+8.1 plus line 17.3 = 33.5px.
+      // The header row (thead th), the group headers (hdr-*) and the Other ranks separator (osep)
+      // are excluded so the rules above still hold for them.
+      .'.mm tbody tr:not(.hdr-hdom):not(.hdr-mal):not(.osep) td{padding-top:7px !important;padding-bottom:7px !important;line-height:1.42 !important}'
       .'</style>';
 
-    // hDOM, 12 columns (cc_rg and misc dropped). mal leaves the cc_r slot (7th) empty and lines
-    // matched..m_score up from there.
-    $HDR_H = array('rank','chromosome','method','aligned_bp','dir','scale','cc_r','cc_g','cc_rg2','cc_rL','F1_g','h_score');
-    $HDR_M = array('rank','chromosome','method','aligned_bp','dir','scale','matched','FP','FN','sizing','F1','m_score');
+    // hDOM has 12 columns (cc_rg and misc dropped). mal leaves the cc_r slot (7th) empty and lines matched..m_score up.
+    $HDR_H = array('rank','chromosome','method','aligned_bp','dir','scale','cc_r','cc_g','cc_rg2','cc_rw','F1_g','coh_w','h_score');
+    $HDR_M = array('rank','chromosome','method','aligned_bp','dir','scale','label','matched','FP','FN','F1','sizing','m_score');
     $hrow = function($cols,$cls){ $t='    <tr class="'.$cls.'">'; foreach($cols as $c) $t.='<td>'.htmlspecialchars($c).'</td>'; return $t."</tr>\n"; };
-    $rLoc = function($pair) use($f2c,$fec,$bpf,$drf){
+    $rLoc = function($pair) use($f2c,$fec,$bpf,$drf,$scf){
         list($i,$r)=$pair; $rk=(string)($r['rank']??'');
         $cl='method-local'.((is_numeric($rk)&&((int)$rk===1||(int)$rk===2))?' rank-top':'');
         $tds='<td>rank'.htmlspecialchars(is_numeric($rk)?(string)(int)$rk:$rk).'</td>'
             .'<td>'.htmlspecialchars((string)($r['ref_name']??'')).'</td><td>hDOM</td>'
             .'<td>'.$bpf($r).'</td><td>'.$drf($r).'</td><td>'.$f2c($r,'scale').'</td>'
             .'<td>'.$f2c($r,'cc_r').'</td><td>'.$f2c($r,'cc_g').'</td><td>'.$fec($r,'cc_rg2').'</td>'
-            .'<td>'.$f2c($r,'local_cc_r').'</td><td>'.$f2c($r,'F1').'</td><td>'.$f2c($r,'log(P)').'</td>';
+            .'<td>'.$f2c($r,'local_cc_r').'</td><td>'.$f2c($r,'F1').'</td>'
+            .'<td>'.$scf($r).'</td><td>'.$f2c($r,'log(P)').'</td>';
         return '    <tr class="'.$cl.'" data-rtype="local" data-sel="'.($i+1).'">'.$tds."</tr>\n";
     };
     $rMal = function($pair) use($f2c,$txf,$bpf,$drf){
         list($i,$r)=$pair; $rk=(string)($r['rank']??'');
         $cl='method-mal'.((is_numeric($rk)&&((int)$rk===1||(int)$rk===2))?' rank-top':'');
-        $mM=(int)($r['mal_matched']??0); $mFP=(int)($r['mal_FP']??0); $mFN=(int)($r['mal_FN']??0);
+        // maligner's mal_matched counts matched chunks; K chunks join K-1 labels. matched, F1
+        // and label are all put on a per-label basis here (FP = query_misses and FN = ref_misses
+        // are label counts already). This is the TP definition Total/metrics.json uses.
+        $mChunk=(int)($r['mal_matched']??0); $mM=max(0,$mChunk-1);
+        $mFP=(int)($r['mal_FP']??0); $mFN=(int)($r['mal_FN']??0);
         $mden=2*$mM+$mFP+$mFN; $mf1=($mden>0)?number_format(2*$mM/$mden,2):'';   // F1 = 2M/(2M+FP+FN)
+        $mlab=(($r['mal_matched']??'')!=='' && ($r['mal_FP']??'')!=='') ? (string)($mM+$mFP) : '';
         $tds='<td>m'.htmlspecialchars(is_numeric($rk)?(string)(int)$rk:$rk).'</td>'
             .'<td>'.htmlspecialchars((string)($r['ref_name']??'')).'</td><td>mal</td>'
             .'<td>'.$bpf($r).'</td><td>'.$drf($r).'</td><td>'.$f2c($r,'scale').'</td>'
-            .'<td>'.$txf($r,'mal_matched').'</td><td>'.$txf($r,'mal_FP').'</td><td>'.$txf($r,'mal_FN').'</td>'
-            .'<td>'.$f2c($r,'mal_sizing').'</td><td>'.$mf1.'</td><td>'.$f2c($r,'m_score').'</td>';
+            // label = the labels this molecule entered maligner with = matched + query_misses (FP)
+            .'<td>'.$mlab.'</td>'
+            .'<td>'.(($r['mal_matched']??'')!=='' ? (string)$mM : '').'</td>'
+            .'<td>'.$txf($r,'mal_FP').'</td><td>'.$txf($r,'mal_FN').'</td>'
+            .'<td>'.$mf1.'</td><td>'.$f2c($r,'mal_sizing').'</td><td>'.$f2c($r,'m_score').'</td>';
         return '    <tr class="'.$cl.'" data-rtype="mal" data-sel="'.($i+1).'">'.$tds."</tr>\n";
     };
 
-    // One table, 12 columns lining up on their own. thead is the hDOM header.
+    // One table, 12 columns laid out automatically. thead is the hDOM header.
     $t = '<table border="0" class="dataframe matching-table mm">'."\n  <thead>\n    <tr>\n";
     foreach($HDR_H as $c) $t.='      <th>'.htmlspecialchars($c)."</th>\n"; $t.="    </tr>\n  </thead>\n  <tbody>\n";
     foreach (array_slice($loc,0,3) as $p) $t.=$rLoc($p);          // top: hDOM top-3
     $t.=$hrow($HDR_M,'hdr-mal');
-    foreach (array_slice($mal,0,3) as $p) $t.=$rMal($p);          //      mal top-3
+    foreach (array_slice($mal,0,3) as $p) $t.=$rMal($p);          //          mal top-3
     $lr=array_slice($loc,3); $mr=array_slice($mal,3);
     if ($lr || $mr){                                              // below: Other ranks
         $t.='    <tr class="osep"><td colspan="'.count($HDR_H).'">Other ranks</td></tr>'."\n";
@@ -202,8 +242,13 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
             . '.matching-table .method-local{background-color:#e8f4f8}.matching-table .method-local:nth-child(even){background-color:#d4e9f0}</style>';
     $m = preg_match('/<\/head>/i', $m) ? preg_replace('/<\/head>/i', $cssfix.'</head>', $m, 1) : $cssfix.$m;
     // shrink only the long homolog labels so they fit on one line (no wrap, no push)
-    $m = preg_replace('/<div class="image-label">(H_[^<]*)<\/div>/',
-                      '<div class="image-label" style="font-size:9px;padding:0 4px;letter-spacing:-.2px">$1</div>', $m);
+    // Homolog panel labels: only the long ones that carry a chromosome name (H_local chr05_p and
+    // the like) are shrunk. Taking a short label such as 'H_local' down to 9px only makes its font
+    // differ from the neighbouring panels.
+    $m = preg_replace_callback('/<div class="image-label">(H_[^<]*)<\/div>/', function($x){
+        return (strpos($x[1], 'chr') !== false)
+            ? '<div class="image-label" style="font-size:9px;padding:0 4px;letter-spacing:-.2px">'.$x[1].'</div>'
+            : $x[0]; }, $m);
     // ---- match reference layout: local1/2 -> rank1/2 panel labels; positional panel separators ----
     $m = str_replace(array('<div class="image-label">local1</div>','<div class="image-label">local2</div>'),
                      array('<div class="image-label">rank1</div>','<div class="image-label">rank2</div>'), $m);
@@ -214,11 +259,15 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
         if ($sepn===2) return '<div class="data-separator">';                                       // rank2|mal1: single gray line
         return '<div class="data-separator" style="display:none">';                                 // #3,#4 around hidden mDOM/hDOM
     }, $m);
+    // The rule that hides the mDOM/hDOM separators also catches the one before the homolog panel,
+    // which leaves the H panel flush against the panel above. That single position keeps the same
+    // grey line rank2|mal1 has.
+    $m = preg_replace('/<div class="data-separator" style="display:none"><\/div>(<div class="comparison-item"[^>]*><div class="image-label"[^>]*>H_)/',
+                      '<div class="data-separator"></div>$1', $m);
     // ---- paper layout: data label = length (kb), WHITE + right-aligned same as rank; straightened keeps raw+"(lin.)"; original hides Linearized ----
     // generic: applies to ANY folder that ships a _lengths.json (was hardcoded to basename=='Figure3')
     if (is_file("$base_path/_lengths.json")) {
-        $isstr = (strpos($m, '>data(raw)</div>') !== false);  // straightened or not is read from the view itself (does a data(raw) panel exist), not from the
-        // file name: the distribution strips the _straightened suffix, so the name no longer carries it
+        $isstr = (strpos($m, '>data(raw)</div>') !== false);  // straightened is read from the view's content (a data(raw) panel is present), not from the file name, which carries no _straightened suffix
         if (!$isstr) {  // original: hide the Linearized panel (anchor on green label, BEFORE relabel strips color)
             $m = preg_replace('/<div class="comparison-item">(<div class="image-label" style="color:#27ae60")/', '<div class="comparison-item" style="display:none">$1', $m);
         }
@@ -229,12 +278,14 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
             // edge to box_right-15px (aligned with rank); a too-long label overflows LEFT into the black area (not clipped by the image on the right).
             $ds = 'style="display:flex;justify-content:flex-end;align-items:center"';
             $m = preg_replace('/<div class="image-label" style="color:#e67e22">data\(raw\)<\/div>/', '<div class="image-label" '.$ds.'><span style="white-space:nowrap">'.$lk.'</span></div>', $m);
-            // the lin. label sits at the DNA contour height (~66%), not the image centre (50%): the
-            // label-dots marker band pushes the molecule down
+            // the lin. label sits at the DNA contour height (~66%), not the image centre: the label-dots marker strip pushes the molecule down
             $m = preg_replace('/<div class="image-label" style="color:#27ae60">Linearized<\/div>/', '<div class="image-label" style="position:relative;align-self:stretch"><span style="position:absolute;top:66%;right:15px;transform:translateY(-50%);white-space:nowrap">L '.$lk.'</span></div>', $m);
             $m = str_replace('<div class="image-label">data</div>', '<div class="image-label">'.$lk.'</div>', $m);
         }
     }
+    // Entered from the Total list: that list defines the neighbours, the counter and Up.
+    $TCTX = function_exists('hdom_total_ctx') ? hdom_total_ctx($base_path,$f) : null;
+    if ($TCTX && $TCTX['i']!==false) $GLOBALS['HDOM_UP_HREF'] = $TCTX['up'];
     // nav order from _summary.csv
     $bases = array(); $sum = "$base_path/_summary.csv";
     if (is_file($sum) && ($sh=fopen($sum,'r'))) { $hd=fgetcsv($sh); $mi=$hd?array_search('molecule',$hd):false;
@@ -246,19 +297,57 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
     $i = array_search($f,$bases,true);
     $prev = ($i!==false && $i>0)?$bases[$i-1]:null; $next=($i!==false && $i!==count($bases)-1)?$bases[$i+1]:null;
     $pos = ($i===false)?1:$i+1; $tot=count($bases);
+    if ($TCTX && $TCTX['i']!==false) { $pos=$TCTX['pos']; $tot=$TCTX['n']; }
     $m = preg_replace('/(<span class="jump-num"[^>]*>)\d+(<\/span>\s*\/\s*)\d+/','${1}'.$pos.'${2}'.$tot,$m);
     $pct = $tot>0?round($pos*100.0/$tot,1):0;
     $m = preg_replace('/(progress-bar-fill"[^>]*width:)[\d.]+%/','${1}'.$pct.'%',$m);
     $m = preg_replace('/([A-Za-z0-9_.\-]+)_view_ytb\.html/','index.php?file=$1',$m);
     $m = str_replace('href="index.html"','href="index.php"',$m);
+    if ($TCTX) $m = str_replace('class="index-link" href="index.php"','class="index-link" href="'.htmlspecialchars($TCTX['up'],ENT_QUOTES,'UTF-8').'"',$m);
     $csvp = "$base_path/{$f}_matching_results.csv";
     if (is_file($csvp)) { $nt=hdom_table_from_csv($csvp);
         if ($nt) $m = preg_replace_callback('#<table[^>]*class="[^"]*matching-table[^"]*">.*?</table>#s', function($x)use($nt){return $nt;}, $m, 1); }
     $m = str_replace('<th>ref_name</th>','<th>chromosome</th>',$m);
     $m = str_replace('<th>log(P)</th>','<th>h_score</th>',$m);
+    // --- Select rank: drop mDOM-era d* keys, add rank steppers ---
+    $m = preg_replace('/<option value="d\d+">\s*/', '', $m);
+    $m = preg_replace_callback('/(LABEL_MAP\s*=\s*\{)([^}]*)(\})/', function($x){
+        return $x[1].rtrim(rtrim(preg_replace('/"d\d+"\s*:\s*\d+\s*,?\s*/', '', $x[2])), ',').$x[3]; }, $m, 1);
+    $m = str_replace('placeholder="e.g. d1, m3, p2"', 'placeholder="e.g. l1, m3, p2"', $m);
+    $m = str_replace('Enter d1.., m1.., p1.. to display.', 'Enter l1.., m1.., p1.. to display.', $m);
+    $sbtn = 'line-height:1;padding:1px 7px;font-size:9px;border:1px solid #888;background:#f2f2f2;cursor:pointer';
+    $sstep = '<span id="sel-step" style="display:inline-flex;flex-direction:column;margin-left:5px;vertical-align:middle">'
+           . '<button type="button" onclick="selStep(-1)" title="prev rank (Up arrow)" style="'.$sbtn.';border-bottom:none;border-radius:4px 4px 0 0">&#9650;</button>'
+           . '<button type="button" onclick="selStep(1)" title="next rank (Down arrow)" style="'.$sbtn.';border-radius:0 0 4px 4px">&#9660;</button></span>';
+    $m = preg_replace('/(<input type="text" id="sel-input"[^>]*>)/', '$1'.$sstep, $m, 1);
+    $sjs = '<script>function selStep(d){var i=document.getElementById("sel-input");if(!i)return;'
+         . 'var L=Array.prototype.map.call(document.querySelectorAll("#sel-rank-list option"),function(o){return o.value;});'
+         . 'if(!L.length)return;var v=(i.value||"").trim().toLowerCase();var t=v.match(/^([a-z]+)(\d+)$/);'
+         . 'var p=t?t[1]:"l";var s=L.filter(function(x){var q=x.match(/^([a-z]+)(\d+)$/);return q&&q[1]===p;});'
+         . 'if(!s.length)s=L;var j=s.indexOf(v);j=(j<0)?0:j+d;if(j<0)j=0;if(j>=s.length)j=s.length-1;'
+         . 'i.value=s[j];i.dispatchEvent(new Event("input",{bubbles:true}));i.dispatchEvent(new Event("change",{bubbles:true}));}'
+         . 'document.addEventListener("keydown",function(e){if(e.target&&e.target.id==="sel-input"){'
+         . 'if(e.key==="ArrowUp"){e.preventDefault();selStep(-1);}else if(e.key==="ArrowDown"){e.preventDefault();selStep(1);}}},true);</script>';
+    $m = (strpos($m,'</body>')!==false) ? str_replace('</body>',$sjs.'</body>',$m) : $m.$sjs;
     $mk = function($b){ return $b===null?'#':'index.php?file='.rawurlencode($b); };
-    $m = preg_replace_callback('/(id="nav-prev"[^>]*href=")[^"]*(")/', function($x)use($prev,$mk){return $x[1].$mk($prev).$x[2];}, $m);
-    $m = preg_replace_callback('/(id="nav-next"[^>]*href=")[^"]*(")/', function($x)use($next,$mk){return $x[1].$mk($next).$x[2];}, $m);
+    $purl = $TCTX ? ($TCTX['prev']===null?'#':$TCTX['prev']) : $mk($prev);
+    $nurl = $TCTX ? ($TCTX['next']===null?'#':$TCTX['next']) : $mk($next);
+    if ($TCTX) {
+        // In Total order the disabled state and href baked in per folder can both be wrong: at a
+        // group boundary a molecule is the folder's last but not Total's. The tags are rewritten
+        // whole.
+        foreach (array(array('nav-prev',$TCTX['prev'],'Previous molecule (Left arrow)','&#9664;'),
+                       array('nav-next',$TCTX['next'],'Next molecule (Right arrow)','&#9654;')) as $nb) {
+            list($id,$u,$ti,$gl) = $nb;
+            $tag = '<a id="'.$id.'" class="nav-btn'.($u===null?' disabled':'').'"'
+                 . ($u===null?'':' href="'.htmlspecialchars($u,ENT_QUOTES,'UTF-8').'"')
+                 . ' title="'.$ti.'">'.$gl.'</a>';
+            $m = preg_replace('#<a id="'.$id.'"[^>]*>.*?</a>#s', $tag, $m, 1);
+        }
+    } else {
+        $m = preg_replace_callback('/(id="nav-prev"[^>]*href=")[^"]*(")/', function($x)use($purl){return $x[1].htmlspecialchars($purl,ENT_QUOTES,'UTF-8').$x[2];}, $m);
+        $m = preg_replace_callback('/(id="nav-next"[^>]*href=")[^"]*(")/', function($x)use($nurl){return $x[1].htmlspecialchars($nurl,ENT_QUOTES,'UTF-8').$x[2];}, $m);
+    }
     // ref_map per-type show/hide toggle (local / mDOM / mal / hDOM) — persisted in localStorage
     $btn = '';
     foreach (array('local','mal') as $t) {
@@ -281,8 +370,12 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
         . '</script>';
     $m = preg_match('/<body[^>]*>/i', $m) ? preg_replace('/(<body[^>]*>)/i', '$1'.$toggle, $m, 1) : $toggle.$m;
     // navorder: if the listing was sorted, prev/next follow that order
-    $navjs = '<script>(function(){try{var KEY="navorder:"+location.pathname.replace(/index\.php$/,"").replace(/\/$/,"");'
+    $navjs = $TCTX ? hdom_total_navjs($TCTX) : '<script>(function(){try{var TOTN='.count($bases).';var KEY="navorder:"+location.pathname.replace(/index\.php$/,"").replace(/\/$/,"");'
         . 'var order=JSON.parse(localStorage.getItem(KEY)||"null");if(!order||!order.length)return;'
+        // A stored order from a listing with a different molecule count is stale (files added or
+        // removed since); drop it and keep the server-rendered prev/next rather than navigating
+        // by a list that no longer describes this folder.
+        . 'if(order.length!==TOTN){localStorage.removeItem(KEY);return;}'
         . 'var cur=new URLSearchParams(location.search).get("file");if(!cur)return;var i=order.indexOf(cur);if(i<0)return;'
         . 'function setn(id,b){var el=document.getElementById(id);if(!el)return;if(b==null){el.classList.add("disabled");el.removeAttribute("href");}else{el.classList.remove("disabled");el.setAttribute("href","index.php?file="+encodeURIComponent(b));}}'
         . 'function go(){setn("nav-prev",i>0?order[i-1]:null);setn("nav-next",i<order.length-1?order[i+1]:null);var jn=document.querySelector(".jump-num");if(jn)jn.textContent=(i+1);}'
@@ -370,6 +463,45 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
         . 'fetch("index.php",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(d){'
         . 'if(d&&d.ok){mk=d.marked;render();}}).catch(function(e){});}},false);render();})();</script>';
 
+    // ---- recovery banner, rendered from {base}_recovery.json ----
+    // Same slot and same shape as the image-quality banner below, in blue rather than amber: this one
+    // is not a warning about the molecule, it states that the alignment shown was produced under a
+    // configuration other than the deployed default, and which one. Molecules without the sidecar are
+    // ordinary deployed results and get no banner.
+    $rcp = "$base_path/{$f}_recovery.json";
+    if (is_file($rcp) && strpos($m, 'data-recovery-banner') === false) {
+        $rc = json_decode((string)file_get_contents($rcp), true);
+        if (is_array($rc) && !empty($rc['title'])) {
+            $rchip = function ($lab, $val) {
+                return '<span style="display:inline-block;margin-right:14px;padding:2px 9px;border-radius:4px;'
+                     . 'background:#3d6fa5;color:#fff;font-weight:bold">'
+                     . htmlspecialchars($lab).' '.htmlspecialchars($val).'</span>'; };
+            $ch = '';
+            foreach (($rc['chips'] ?? array()) as $cpair) {
+                if (is_array($cpair) && count($cpair) >= 2) $ch .= $rchip($cpair[0], $cpair[1]); }
+            $na = (int)($rc['n_add'] ?? 0); $nr = (int)($rc['n_rem'] ?? 0);
+            if ($na || $nr) $ch .= $rchip('label edits', sprintf('+%d / -%d', $na, $nr));
+            $og = $rc['origin'] ?? '';
+            $rcb = '<div data-recovery-banner style="margin:10px 0;padding:12px 16px;border:1px solid #3d6fa5;'
+                 . 'border-left:6px solid #3d6fa5;border-radius:5px;background:#eef4fb;color:#22405f;'
+                 . 'font:14px \'Segoe UI\',Tahoma,sans-serif;line-height:1.5">'
+                 . '<div style="font-weight:bold;font-size:15px;margin-bottom:6px">'
+                 . htmlspecialchars($rc['title']).' &mdash; not the deployed configuration</div>'
+                 . ($ch !== '' ? '<div style="margin-bottom:7px">'.$ch.'</div>' : '')
+                 . '<div style="margin-bottom:7px">'.htmlspecialchars($rc['body'] ?? '').'</div>'
+                 . '<div style="font-size:12.5px;color:#4a6a8c">The deployed run leaves this molecule without a '
+                 . 'homolog pair'.($og !== '' ? ', in '.htmlspecialchars($og) : '').'. h_score comes from the same '
+                 . 'K=5000 null as every other molecule, but the candidate list it was ranked against is not the '
+                 . 'default one, so read it against this molecule&rsquo;s own alternatives rather than across molecules.'
+                 . '</div></div>';
+            if (preg_match('/<div class="eval-toolbar"/', $m)) {
+                $m = preg_replace('/(<div class="eval-toolbar")/', $rcb.'$1', $m, 1);
+            } elseif (preg_match('/<body[^>]*>/i', $m)) {
+                $m = preg_replace('/(<body[^>]*>)/i', '$1'.$rcb, $m, 1);
+            } else { $m = $rcb.$m; }
+        }
+    }
+
     // ---- image-quality banner, rendered from {base}_qc.json (written by hdom/qc.py) ----
     // Advisory only: the molecule is still aligned and still shown. The checks look at the IMAGE,
     // which is a different question from how the alignment scored, and one the score cannot answer.
@@ -411,74 +543,164 @@ if (isset($_GET['file']) && $_GET['file'] !== '') {
         }
     }
     $m = (strpos($m,'</body>')!==false) ? str_replace('</body>',$rjs.'</body>',$m) : $m.$rjs;
+    // B2 header layout: the ref_map bar, the nav arrows and the Class toolbar are rearranged and
+    // the duplicated subtitle is dropped. The profile and cc graphs and the h1 analysis table are
+    // not taken.
+    $__bl = __DIR__;
+    for ($__i = 0; $__i < 4 && !is_file($__bl.'/_b2_layout.php'); $__i++) $__bl = dirname($__bl);
+    if (is_file($__bl.'/_b2_layout.php')) {
+        require_once $__bl.'/_b2_layout.php';
+        $__lay = hdom_b2_layout();
+        $m = (strpos($m,'</body>') !== false) ? str_replace('</body>', $__lay.'</body>', $m) : $m.$__lay;
+    }
     echo $m; exit;
 }
 
-// ---- listing (A_group style: sortable + navorder persistence) ----
+// ---- listing (hDOM Database card style: sortable + navorder persistence) ----
+// When a molecule's CSV is newer than the summary, after a re-rank or an h_score recomputation,
+// score and rank1 are rebuilt on the spot. _summary.csv is updated too where the process can
+// write; otherwise the fresh values are used for the page only.
 $rows = array();
-if (is_file("$base_path/_summary.csv") && ($fp=fopen("$base_path/_summary.csv","r"))) {
+if (function_exists('hdom_summary_rows')) $rows = hdom_summary_rows($base_path) ?: array();
+if (!$rows && is_file("$base_path/_summary.csv") && ($fp=fopen("$base_path/_summary.csv","r"))) {
     $hd=fgetcsv($fp); while(($r=fgetcsv($fp))!==false) $rows[]=array_combine($hd,array_pad($r,count($hd),'')); fclose($fp); }
 $g = basename($base_path);
-$LEN = is_file("$base_path/_lengths.json") ? (json_decode(file_get_contents("$base_path/_lengths.json"),true) ?: array()) : array();
-echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'>"
-   . "<title>$g — local-align comparison</title><style>"
-   . "body{font-family:'Segoe UI',Tahoma,sans-serif;margin:20px;background:#f8f9fa;color:#333}"
-   . "h1{color:#0056b3;border-bottom:2px solid #0056b3;padding-bottom:10px}"
-   . "table{width:100%;border-collapse:collapse;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);margin-top:16px}"
-   . "th,td{padding:8px 12px;text-align:left;border-bottom:1px solid #ddd;font-size:.92em}"
-   . "th{background:#0056b3;color:#fff;cursor:pointer;white-space:nowrap}th:hover{background:#004494}"
-   . "th::after{content:' \\2195';font-size:.8em;color:#ccc}tr:hover{background:#f1f1f1}"
-   . "a{color:#0056b3;text-decoration:none;font-weight:bold}a:hover{text-decoration:underline}"
-   . ".small{font-weight:normal;color:#888}.toolbar a{display:inline-block;padding:4px 12px;background:#305496;color:#fff;border-radius:4px;font-size:.9em;margin-right:6px}</style></head><body>";
-echo "<h1>$g <span class='small'>(".count($rows)." molecules) &middot; local-align 4-method comparison</span></h1>";
-$cmarks = $IS_C ? cplus_load($CPLUS_JSON) : array();
-echo "<div class='toolbar'><a href='../'>&larr; DOM_local</a><a href='_summary.csv'>_summary.csv</a>";
-if ($IS_C) echo "<span style='display:inline-block;padding:4px 12px;border-radius:4px;background:#b8860b;color:#fff;"
-    . "font-weight:bold;font-size:.9em'>&#9873; <span id='mvn'>".count($cmarks)."</span> marked &rarr; Cplus</span>"
-    . "<span class='small' style='margin-left:8px'>(open a molecule, press <b>c</b> to mark; run move_cplus.py to move)</span>";
-echo "</div>";
-echo "<table id='t'><thead><tr>";
-$scoremethod = 'local';  // ML_label tree: _summary score = local rank1 logP (local_cc_r x F1)  // local tree -> local logP
-$othermethod = ($scoremethod==='local') ? 'mDOM' : 'local';  // other method's classification column
-$hasmc = false;  // mDOM class column removed (per request)
-$cols  = array('#','Molecule','len(kb)','H_score ('.$scoremethod.' logP)','local rank1','mal rank1');
-$types = array('s','s','n','n','s','s','s','s','s');
-if ($hasmc){ $cols[]=$othermethod.' class'; $types[]='s'; }
-$hashom = !empty($rows) && array_key_exists('hom12',$rows[0]);
-if ($hashom){ $cols[]='homolog 1,2'; $types[]='s'; }
-$haschg = !empty($rows) && array_key_exists('change',$rows[0]);
-if ($haschg){ $cols[]='change'; $types[]='s'; }
-$hasog = !empty($rows) && array_key_exists('localgrp',$rows[0]);
-if ($hasog){ $cols[]='origin (local)'; $types[]='s'; }
-if ($IS_C){ $cols[]='Cplus'; $types[]='s'; }
-$cols[]='view'; $types[]='';
-foreach($cols as $k=>$c){ echo ($c==='view') ? "<th>view</th>" : "<th onclick=\"sortTable($k,'{$types[$k]}')\">".htmlspecialchars($c)."</th>"; }
-echo "</tr></thead><tbody>";
-$i=0; foreach($rows as $r){ $i++; $mol=$r['molecule']; $v='index.php?file='.rawurlencode($mol);
- echo "<tr data-mol='".htmlspecialchars($mol)."'><td>$i</td>"
-    ."<td><a href='$v'>".htmlspecialchars($mol)."</a></td>"
-    ."<td style='text-align:right'>".(isset($LEN[$mol])?$LEN[$mol]:'')."</td>"
-    ."<td>".htmlspecialchars($r['score']??'')."</td>"
-    ."<td>".htmlspecialchars($r['local1']??'')."</td>"
-    ."<td>".htmlspecialchars($r['mal1']??'')."</td>"
-    
-    .($hasmc ? "<td>".htmlspecialchars($r['mdom_class']??'')."</td>" : "")
-    .($hashom ? "<td style='text-align:center;font-weight:bold;color:".((($r['hom12']??'')==='Y')?'#27ae60':'#bbb')."'>".((($r['hom12']??'')==='Y')?'&#10004;':'&ndash;')."</td>" : "")
-    .($haschg ? "<td style='text-align:center;font-weight:bold;color:".(($r['change']??'')==='GAIN'?'#27ae60':(($r['change']??'')==='BREAK'?'#e74c3c':'#bbb'))."'>".htmlspecialchars($r['change']??'')."</td>" : "")
-    .($hasog ? "<td style='text-align:center;font-weight:bold'>".htmlspecialchars($r['localgrp']??'')."</td>" : "")
-    .($IS_C ? "<td class='cpm' data-mol='".htmlspecialchars($mol)."' style='text-align:center;color:#b8860b;font-weight:bold'>".(!empty($cmarks[$mol])?'&#9873;':'')."</td>" : "")
-    ."<td><a href='$v'>view</a></td></tr>";
+// Title, description and colour come from the landing page's $GROUPS block, so a folder name never
+// surfaces as a title. A sub-set (C_total/Information_rich ...) is described by its parent
+// container's $SUBS entries and takes the parent group's colour.
+$GMETA = array(); $SUBMETA = array();
+for ($up=$base_path, $i=0; $i<4; $i++) {
+    $cand = dirname($up).'/index.php';
+    if (is_file($cand)) {
+        $src = file_get_contents($cand);
+        if (!$SUBMETA && preg_match_all('/array\(\'([A-Za-z0-9_]+)\',\'([^\']*)\',\s*\'([^\']*)\'\)/', $src, $sm, PREG_SET_ORDER))
+            foreach ($sm as $s) $SUBMETA[$s[1]] = array($s[2], $s[3]);
+        if (preg_match('/\$GROUPS *= *json_decode\(<<<\'JSON\'(.*?)JSON/s', $src, $mm)) {
+            $j = json_decode(trim($mm[1]), true);
+            if (is_array($j)) { $GMETA = $j; break; }
+        }
+    }
+    $up = dirname($up);
 }
-echo "</tbody></table><script>"
-  . "function sortTable(n,type){var t=document.getElementById('t'),tb=t.tBodies[0];var rows=Array.from(tb.rows);"
-  . "var th=t.tHead.rows[0].cells[n];var dir=th.getAttribute('data-dir')==='asc'?'desc':'asc';"
-  . "Array.from(t.tHead.rows[0].cells).forEach(function(c){if(c!==th)c.removeAttribute('data-dir');});th.setAttribute('data-dir',dir);"
-  . "rows.sort(function(a,b){var x=a.cells[n].textContent.trim(),y=b.cells[n].textContent.trim();"
-  . "if(type==='n'){x=parseFloat(x);y=parseFloat(y);if(isNaN(x))x=Infinity;if(isNaN(y))y=Infinity;}"
-  . "if(x<y)return dir==='asc'?-1:1;if(x>y)return dir==='asc'?1:-1;return 0;});"
-  . "rows.forEach(function(r){tb.appendChild(r);});saveNavOrder();}"
-  . "function navKey(){return 'navorder:'+location.pathname.replace(/index\\.php$/,'').replace(/\\/$/,'');}"
-  . "function saveNavOrder(){try{var tb=document.getElementById('t').tBodies[0];"
-  . "var order=Array.from(tb.rows).map(function(r){return r.getAttribute('data-mol');}).filter(Boolean);"
-  . "localStorage.setItem(navKey(),JSON.stringify(order));}catch(e){}}saveNavOrder();"
-  . "</script></body></html>";
+$pg = basename(dirname($base_path));
+$gm = (isset($GMETA[$g]) && is_array($GMETA[$g])) ? $GMETA[$g] : null;
+$pm = (isset($GMETA[$pg]) && is_array($GMETA[$pg])) ? $GMETA[$pg] : null;
+$disp  = $gm ? $gm[1] : (isset($SUBMETA[$g]) ? $SUBMETA[$g][0] : str_replace('_', ' ', $g));
+$gdesc = $gm ? (string)($gm[2] ?? '') : (isset($SUBMETA[$g]) ? $SUBMETA[$g][1] : '');
+$gcol  = $gm ? (string)($gm[4] ?? '') : ($pm ? (string)($pm[4] ?? '') : '');
+$back  = $pm ? $pm[1] : 'hDOM Database';
+$LEN = is_file("$base_path/_lengths.json") ? (json_decode(file_get_contents("$base_path/_lengths.json"),true) ?: array()) : array();
+// Label-only folders (SGM and its Figure 2 subset) have no hDOM result: local rank1 is empty on every
+// row and the _summary score column is the maligner m_score.
+$MALONLY = !empty($rows);
+foreach ($rows as $r) if (($r['local1'] ?? '') !== '') { $MALONLY = false; break; }
+$esc = function($s){ return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+$cols = array(array('#','n','idx'), array('Molecule','s','mol'), array('len (kb)','n','num'),
+              $MALONLY ? array('m_score','n','num') : array('h_score (logP)','n','num'));
+if (!$MALONLY) $cols[] = array('hDOM rank1','s','');
+$cols[] = array('mal rank1','s','');
+$hashom = !empty($rows) && array_key_exists('hom12',$rows[0]);    if ($hashom) $cols[] = array('homolog 1,2','s','ctr');
+$haschg = !empty($rows) && array_key_exists('change',$rows[0]);   if ($haschg) $cols[] = array('change','s','ctr');
+$hasog  = !empty($rows) && array_key_exists('localgrp',$rows[0]); if ($hasog)  $cols[] = array('origin (local)','s','ctr');
+if ($IS_C) $cols[] = array('Cplus','s','ctr');
+$cmarks = $IS_C ? cplus_load($CPLUS_JSON) : array();
+$nrow = count($rows);
+?><!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?= $esc($disp) ?> &middot; hDOM Database</title>
+<style>
+  :root {
+    --bg: #fafaf7; --fg: #1d1d1b; --muted: #6b6b66; --grid: #e2e2dc; --card: #fff;
+    --accent: #2f5fb3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back { display: inline-block; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+  .back:hover { color: var(--accent); text-decoration: none; }
+  h1 { font-size: 24px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .sub { color: var(--muted); margin: 0; max-width: 760px; }
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin: 14px 0 12px; color: var(--muted); font-size: 13px; }
+  .meta b { font-size: 20px; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .meta .mark { color: #b8860b; font-weight: 600; }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--grid); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 7px 12px; border-bottom: 1px solid var(--grid); text-align: left; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; cursor: pointer; user-select: none; }
+  th:hover { color: var(--accent); }
+  th[data-dir="asc"]::after { content: " \25B4"; }
+  th[data-dir="desc"]::after { content: " \25BE"; }
+  tbody tr:hover { background: #f4f6fb; }
+  .idx { color: #9a9a94; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  th.num { text-align: right; }
+  .ctr { text-align: center; }
+  td.mol a { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">&larr; <?= $esc($back) ?></a>
+  <h1><?php if ($gcol !== ''): ?><span class="dot" style="background:<?= $esc($gcol) ?>"></span><?php endif; ?><?= $esc($disp) ?></h1>
+<?php if ($gdesc !== ''): ?>  <p class="sub"><?= $esc($gdesc) ?></p>
+<?php endif; ?>
+  <div class="meta">
+    <span><b><?= number_format($nrow) ?></b> <?= $nrow == 1 ? 'molecule' : 'molecules' ?></span>
+    <a href="_summary.csv">_summary.csv</a>
+<?php if ($IS_C): ?>    <span class="mark">&#9873; <span id="mvn"><?= count($cmarks) ?></span> marked &rarr; Cplus</span>
+    <span>(open a molecule, press <b style="font-size:inherit">c</b> to mark; run move_cplus.py to move)</span>
+<?php endif; ?>
+  </div>
+  <div class="tablewrap">
+  <table id="t">
+    <thead><tr><?php foreach ($cols as $k => $c): ?><th class="<?= $c[2] ?>" onclick="sortTable(<?= $k ?>,'<?= $c[1] ?>')"><?= $esc($c[0]) ?></th><?php endforeach; ?></tr></thead>
+    <tbody>
+<?php $i = 0; foreach ($rows as $r): $i++; $mol = $r['molecule'] ?? ''; if ($mol === '') continue; $v = 'index.php?file='.rawurlencode($mol);
+      $hom = ($r['hom12'] ?? '') === 'Y'; $chg = (string)($r['change'] ?? ''); ?>
+      <tr data-mol="<?= $esc($mol) ?>"><td class="idx"><?= $i ?></td><td class="mol"><a href="<?= $esc($v) ?>"><?= $esc($mol) ?></a></td><td class="num"><?= isset($LEN[$mol]) ? $esc($LEN[$mol]) : '' ?></td><td class="num"><?= $esc($r['score'] ?? '') ?></td><?php if (!$MALONLY): ?><td><?= $esc($r['local1'] ?? '') ?></td><?php endif; ?><td><?= $esc($r['mal1'] ?? '') ?></td><?php
+      if ($hashom): ?><td class="ctr" style="font-weight:600;color:<?= $hom ? '#27ae60' : '#bbb' ?>"><?= $hom ? '&#10004;' : '&ndash;' ?></td><?php endif;
+      if ($haschg): ?><td class="ctr" style="font-weight:600;color:<?= $chg === 'GAIN' ? '#27ae60' : ($chg === 'BREAK' ? '#e74c3c' : '#bbb') ?>"><?= $esc($chg) ?></td><?php endif;
+      if ($hasog): ?><td class="ctr" style="font-weight:600"><?= $esc($r['localgrp'] ?? '') ?></td><?php endif;
+      if ($IS_C): ?><td class="ctr cpm" data-mol="<?= $esc($mol) ?>" style="color:#b8860b;font-weight:600"><?= !empty($cmarks[$mol]) ? '&#9873;' : '' ?></td><?php endif; ?></tr>
+<?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+</div>
+<script>
+function sortTable(n,type){var t=document.getElementById('t'),tb=t.tBodies[0];var rows=Array.from(tb.rows);
+var th=t.tHead.rows[0].cells[n];var dir=th.getAttribute('data-dir')==='asc'?'desc':'asc';
+Array.from(t.tHead.rows[0].cells).forEach(function(c){if(c!==th)c.removeAttribute('data-dir');});th.setAttribute('data-dir',dir);
+rows.sort(function(a,b){var x=a.cells[n].textContent.trim(),y=b.cells[n].textContent.trim();
+if(type==='n'){x=parseFloat(x);y=parseFloat(y);if(isNaN(x))x=Infinity;if(isNaN(y))y=Infinity;}
+if(x<y)return dir==='asc'?-1:1;if(x>y)return dir==='asc'?1:-1;return 0;});
+rows.forEach(function(r){tb.appendChild(r);});renum();saveNavOrder();saveSort(n,type,dir);}
+// The '#' column is a display position, not an identity: after any sort it reads 1..N in the
+// order shown, so the number a row carries always matches where it sits on screen.
+function renum(){var tb=document.getElementById('t').tBodies[0];
+Array.from(tb.rows).forEach(function(r,i){if(r.cells[0])r.cells[0].textContent=i+1;});}
+function navKey(){return 'navorder:'+location.pathname.replace(/index\.php$/,'').replace(/\/$/,'');}
+function saveNavOrder(){try{var tb=document.getElementById('t').tBodies[0];
+var order=Array.from(tb.rows).map(function(r){return r.getAttribute('data-mol');}).filter(Boolean);
+localStorage.setItem(navKey(),JSON.stringify(order));}catch(e){}}saveNavOrder();
+// The sort state (column, format, direction) is remembered per folder. Opening a molecule page
+// and coming back with Up or the browser's back button redraws the list, and the sort last chosen
+// is restored there.
+function sortKey(){return 'sortstate:'+location.pathname.replace(/index\.php$/,'').replace(/\/$/,'');}
+function saveSort(n,type,dir){try{localStorage.setItem(sortKey(),JSON.stringify({n:n,type:type,dir:dir}));}catch(e){}}
+function restoreSort(){try{var s=JSON.parse(localStorage.getItem(sortKey())||'null');if(!s)return;
+var t=document.getElementById('t');if(!t||!t.tHead)return;var th=t.tHead.rows[0].cells[s.n];if(!th)return;
+// sortTable flips the current direction, so the opposite of the stored direction is seeded before calling it.
+th.setAttribute('data-dir',s.dir==='asc'?'desc':'asc');sortTable(s.n,s.type);}catch(e){}}
+restoreSort();
+</script>
+</body>
+</html>

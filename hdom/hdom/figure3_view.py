@@ -2,11 +2,9 @@
 rank1/2 + mal1/2 panels) into a pipeline output folder, and build the _lengths.json the
 viewer needs. Used by local_align_pipeline.py (standard) and straighten_align.py (linearized).
 
-The viewer template is `index.php` in this directory, the single released copy. There used to be
-a second one here (`figure3_index.php`) which this module copied instead, so a run could ship a
-viewer older than the one in the repository -- which is how output folders ended up without the
-QC banner and with the pre-0.9x table row height. There is now one file and one copy of it.
-mdom/pcc/homolog rows stay in the CSV (kept for later use); the viewer just shows local+mal.
+The viewer template is `index.php` in this directory and is the only released copy, so a run
+cannot ship a viewer older than the one in the repository. mdom/pcc/homolog rows stay in the CSV
+for later use; the viewer shows local+mal only.
 """
 import os, json, shutil, fcntl
 
@@ -75,7 +73,7 @@ def parse_mal_native(dp_txt, topn=10):
 
 
 def to_figure3_csv(csv_path, dp_txt, topn=10):
-    """Rewrite a 14-col rerank CSV into the 19-col Figure3 format IN PLACE:
+    """Rewrite a rerank CSV into the Figure3 format IN PLACE (19 known cols + any extras kept):
     non-mal rows (local/mDOM/pcc/homolog) are kept & padded with 5 blank cols;
     mal rows are replaced with maligner-native fields (m_score, matched, FP, FN, sizing)
     parsed from dp_txt, with cc_*/log(P) blank. mdom/pcc/homolog data is preserved."""
@@ -88,13 +86,20 @@ def to_figure3_csv(csv_path, dp_txt, topn=10):
     if not rows:
         return 'nocsv'
     native = parse_mal_native(dp_txt, topn)
+    # Columns the rerank wrote that Figure3 does not know about (shift_gap / w_coh, and anything a
+    # later version adds). They are appended rather than dropped, so the CSV keeps every column the
+    # ranking wrote.
+    extra = [c for c in rows[0].keys() if c and c not in FIG3_COLS]
+    cols = FIG3_COLS + extra
     out = []
-    for r in rows:                       # keep every non-mal row, padded to 19 cols
+    for r in rows:                       # keep every non-mal row, padded to the full column set
         if (r.get('method') or '').strip() == 'mal':
             continue
         row = {c: r.get(c, '') for c in FIG3_COLS[:14]}
         for c in FIG3_COLS[14:]:
             row[c] = ''
+        for c in extra:
+            row[c] = r.get(c, '')
         out.append(row)
     if native is None:                   # dp_txt missing/bad: keep original mal rows (padded)
         for r in rows:
@@ -103,17 +108,19 @@ def to_figure3_csv(csv_path, dp_txt, topn=10):
             row = {c: r.get(c, '') for c in FIG3_COLS[:14]}
             for c in FIG3_COLS[14:]:
                 row[c] = ''
+            for c in extra:
+                row[c] = r.get(c, '')
             out.append(row)
     else:                                # native mal rows (log(P) blank, m_score+matched/FP/FN/sizing)
         for i, d in enumerate(native, 1):
-            row = {c: '' for c in FIG3_COLS}
+            row = {c: '' for c in cols}
             row.update({'rank': str(i), 'ref_name': d['ref'], 'method': 'mal',
                         'aligned_bp': str(d['ab']), 'dir': str(d['dir']), 'scale': f"{d['scale']:.2f}",
                         'm_score': f"{d['m']:.2f}", 'mal_matched': d['matched'], 'mal_FP': d['FP'],
                         'mal_FN': d['FN'], 'mal_sizing': f"{d['sizing']:.2f}"})
             out.append(row)
     buf = _io.StringIO()
-    w = _csv.DictWriter(buf, fieldnames=FIG3_COLS)
+    w = _csv.DictWriter(buf, fieldnames=cols)
     w.writeheader()
     w.writerows(out)
     tmp = csv_path + '.tmp'

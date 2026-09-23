@@ -108,6 +108,7 @@ def local_ccr_vec(M, ref_prof, aligned_bp, scale, direction):
     L = len(mf)
     starts = M['starts']; molAz = M['molAz']; mvalid = M['mvalid']
     best = np.full(M['nt'], -np.inf)
+    bsh = np.zeros(M['nt'])          # SHIFT_PEN: argmax shift per tile (px), kept for the roughness
     for s in SHIFTS:
         ls = starts + s
         ok = (ls >= 0) & (ls + WIN <= L)
@@ -120,9 +121,19 @@ def local_ccr_vec(M, ref_prof, aligned_bp, scale, direction):
             continue
         Bs = B[mv]; Bz = (Bs - Bs.mean(1, keepdims=True)) / bstd[mv][:, None]
         c = (molAz[oki][mv] * Bz).sum(1) / WIN
-        t = oki[mv]; best[t] = np.maximum(best[t], c)
+        t = oki[mv]
+        upd = c > best[t]
+        best[t] = np.maximum(best[t], c)
+        bsh[t[upd]] = s
     fm = mvalid & np.isfinite(best)
-    return float(best[fm].mean()) if fm.any() else np.nan
+    if not fm.any():
+        return np.nan
+    v = float(best[fm].mean())
+    if not P.SHIFT_PEN:
+        return v
+    sh = bsh[fm]
+    jump = float(np.abs(np.diff(sh)).mean()) if sh.size > 1 else 0.0
+    return v * max(0.0, 1.0 - jump / (2.0 * P.MAXS))
 
 
 _CUT_CACHE = {}

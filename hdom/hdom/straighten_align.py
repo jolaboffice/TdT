@@ -16,7 +16,7 @@ Usage:
   python3 straighten_align.py --input <raw_folder> --output <dest> [--shard k/N] [--no-before-after]
   # parallel: run N shards, e.g.  --shard 0/4, --shard 1/4, ...
 """
-import os
+import os, re
 os.environ['OPT_COMBINED'] = '1'
 os.environ.setdefault('MATCH_WORKERS', '1'); os.environ.setdefault('MALIGNER_WORKERS', '1')
 os.environ.setdefault('OMP_NUM_THREADS', '1'); os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
@@ -136,7 +136,10 @@ def backbone(red, win=4, reacq=20, maxstep=None, min_run=10):
 # different defects legitimately selects a different set of molecules.
 BBFIX_MAXSTEP = float(os.environ.get('BBFIX_MAXSTEP', '2.0'))    # max backbone move per column (px)
 BBFIX_MINRUN  = int(os.environ.get('BBFIX_MINRUN', '10'))        # shortest surviving island kept
-BBFIX_THRESH  = float(os.environ.get('BBFIX_THRESH', '40'))      # d99 * ydev above which BBFIX is used
+BBFIX_THRESH  = float(os.environ.get('BBFIX_THRESH', '10'))      # d99 * ydev above which BBFIX is used
+# 40 fired for only 33 of 3,164 molecules (1.0%) while roughly 6-8% show trace zigzag in dim
+# stretches. 10 is the value the HG002 v1.2 / 1 bp production run used; set BBFIX_THRESH=40 to
+# reproduce results published before 2026-09.
 BBFIX_ON      = os.environ.get('BBFIX', '1') not in ('0', 'no', 'off')
 
 def _span_fill(y):
@@ -174,6 +177,18 @@ def _band_dev(swept_red):
     return float(np.percentile(np.abs(cs - median_filter(cs, size=151, mode='nearest')), 99))
 
 SWEEP_SM = int(os.environ.get('SWEEP_SM', '6'))   # backbone smoothing half-window (columns)
+# HDOM_SNAP=0 leaves each label where the arc-length map put it, instead of pulling it onto the
+# nearest peak of the WARPED green image. The map is exact; the warped green is not -- at high
+# curvature the normal band self-intersects and smears peaks, so snapping lets a distorted image
+# override a correct coordinate. Kept on by default so published results are unchanged.
+SNAP_ON = os.environ.get('HDOM_SNAP', '1') not in ('0', 'no', 'off')
+# HDOM_STRAIGHTEN=0 aligns the molecule as imaged, with no arc-length resampling at all. Labels stay
+# at their detected raw columns and the green channel is redrawn there, so nothing about the
+# alignment can depend on a backbone trace. The cost is real: a curved molecule is measured along
+# its chord, not its contour, so it comes out short and the scale fit has to absorb the deficit --
+# which is what straightening existed to prevent. Use it to take the straightener out of the
+# comparison, not as a better default.
+STRAIGHTEN_ON = os.environ.get('HDOM_STRAIGHTEN', '1') not in ('0', 'no', 'off')
 def sweep(a, ml, sm=None):
     """Straighten the molecule by resampling along the backbone's arc length.
 
@@ -302,7 +317,7 @@ for k in mine:
     # RAW-frame pixels (the same frame detect_labels returns), so straightening maps them onward
     # exactly as it maps detected ones -- a hand-checked molecule differs from an automatic one only
     # in where the labels came from.
-    ml = None
+    ml = None; _hand = False        # _hand: this label set was placed by a person, not the detector
     _ed = os.environ.get('HDOM_LABEL_EDIT', '')
     if _ed:
         _ef = os.path.join(_ed, f'{k}_labeledit.json')
@@ -310,15 +325,37 @@ for k in mine:
             try:
                 _j = json.load(open(_ef, encoding='utf-8'))
                 ml = sorted(int(round(float(x))) for x in _j.get('final', []))
-                print(f'  [labeledit] {k}: {len(ml)} labels', flush=True)
+                _hand = True
+                print(f'  [labeledit] {k}: {len(ml)} labels (snap off: hand-placed)', flush=True)
             except Exception as e:
                 print(f'  labeledit read fail {k}: {e}', flush=True); ml = None
     if ml is None:
         ml = sorted(int(x) for x in ML.detect_labels(src))
     if not ml: print(f'  no ML {k}', flush=True); continue
-    r = sweep(a, ml)
-    if r is None: print(f'  sweep fail {k}', flush=True); continue
-    st, oc, ext = r; oc = snap(oc, st[1]); fw = measure(st[1], [int(round(c)) for c in oc])
+    if STRAIGHTEN_ON:
+        r = sweep(a, ml)
+        if r is None: print(f'  sweep fail {k}', flush=True); continue
+        st, oc, ext = r
+        # snap() exists to undo the pixel or two that warping costs a DETECTED label. A hand-placed
+        # label already says where the person decided the site is, and snap's peak list uses the same
+        # 25%-of-max floor the detector does -- so a label deliberately put on a peak below that floor
+        # gets dragged onto whichever accepted peak sits within +-4 px, silently merging it with a
+        # neighbour and discarding the edit. Curated sets therefore keep their warped positions.
+        if SNAP_ON and not _hand: oc = snap(oc, st[1])
+    else:
+        # Crop to the traced span even here. The raw frame carries 0-5% background beyond the
+        # backbone (median 0.3%, up to 4.9%), which is the same size as the length change
+        # straightening itself makes -- leaving it in would let frame padding masquerade as
+        # molecule length, and would shift every label by the left margin.
+        _y = chosen_backbone(a[0].astype(float))
+        _v = np.where(~np.isnan(_y))[0]
+        if len(_v) < 10: print(f'  trace too short {k}', flush=True); continue
+        _x0, _x1 = int(_v.min()), int(_v.max())
+        st = a[:, :, _x0:_x1 + 1].astype(np.uint16)
+        oc = [float(x) - _x0 for x in ml if _x0 <= x <= _x1]
+        if len(oc) < 1: print(f'  no label in traced span {k}', flush=True); continue
+        ext = (_x0, _x1)
+    fw = measure(st[1], [int(round(c)) for c in oc])
     wp = np.stack([st[0], widthprop(st[0], oc, fw)]).astype(np.uint16)
     tifffile.imwrite(f'{ST}/{k}.tif', wp)              # align (widthprop green)
     tifffile.imwrite(f'{ST}/{k}_orig.tif', st)         # display: straightened RAW (real green)
@@ -365,11 +402,13 @@ json.dump({_stem(k): v for k, v in removed.items() if v}, open(f'{ST}/removed_pe
 
 # ---------- [2b] reported maligner: same tif, terminal-5 kb labels dropped ----------
 # hDOM_calc_Q has already run maligner on the FULL label set, and those hits stay in the
-# candidate pool that the local re-rank scores together with pcc's. The maligner row REPORTED
-# for the molecule is a second run with the terminal labels dropped: straightening maps labels
-# through np.interp over the traced backbone [x0,x1], so a label outside it clamps onto pixel 0
-# or w2-1 and becomes a spurious query fragment maligner is forced to explain. Both runs are
-# kept on disk (_maligner_dp.txt = candidates, _maligner_dp_trimmed.txt = reported).
+# pool. That pass keeps the terminal labels, and straightening maps labels through np.interp over
+# the traced backbone [x0,x1], so a label outside it clamps onto pixel 0 or w2-1 and becomes a
+# spurious query fragment maligner is forced to explain. A second pass on the trimmed label set
+# fixes that, and it is the one used BOTH for the reported maligner row and for the candidate
+# pool the re-rank scores -- a locus the reported row names must be a locus the re-rank could have
+# chosen, or the two halves of the same table disagree. Both runs stay on disk
+# (_maligner_dp.txt = full-label pass, _maligner_dp_trimmed.txt = trimmed pass, used).
 sys.path.insert(0, os.path.dirname(CALC))
 import hDOM_mal_Q as MAL
 MALBIN = os.environ.get('MALIGNER_DP') or shutil.which('maligner_dp') or 'maligner_dp'
@@ -404,6 +443,32 @@ def trim_mal(k):
         print(f'  trim-mal fail {k}: {e}', flush=True); return None
     finally:
         shutil.rmtree(wd, ignore_errors=True)
+def swap_mal_candidates(cf, dp_txt):
+    """Replace the mal rows of a candidate csv with the alignments in dp_txt.
+
+    calc_Q wrote the mal rows from the full-label maligner run. Keeping the csv's own column set
+    means pcc rows (which carry cc_r/cc_g/... the re-rank reuses) pass through untouched.
+    """
+    import figure3_view as _F3V
+    nat = _F3V.parse_mal_native(dp_txt, 10)
+    if not nat: return False
+    rows = list(csv.DictReader(open(cf, encoding='utf-8')))
+    if not rows: return False
+    cols = list(rows[0].keys())
+    keep = [r for r in rows if (r.get('method') or '').strip().lower() != 'mal']
+    out = []
+    for i, d in enumerate(nat, 1):
+        r = {c: '' for c in cols}
+        r.update({'rank': i, 'ref_name': d['ref'], 'method': 'mal', 'aligned_bp': d['ab'],
+                  'dir': d['dir'], 'scale': f"{d['scale']:.2f}"})
+        if 'misc' in r: r['misc'] = f"{d['m']:.2f}"
+        out.append(r)
+    with open(cf, 'w', newline='', encoding='utf-8') as f:
+        w = csv.DictWriter(f, fieldnames=cols, extrasaction='ignore')
+        w.writeheader()
+        for r in keep + out: w.writerow(r)
+    return True
+
 ok = []
 import figure3_view as F3V   # Figure3 CSV (native mal cols from re-run-on-straightened maligner) + viewer
 if LOGP:
@@ -412,13 +477,16 @@ if LOGP:
 for k in staged:
     cf = f'{ST}/{k}_matching_results.csv'
     if not os.path.exists(cf): continue
+    # trimmed pass first: its hits replace the full-label mal rows in the candidate csv, so the
+    # re-rank scores the same maligner loci the table will report. Molecules with <2 surviving
+    # labels get no trimmed pass and keep the full-label candidates rather than none.
+    tm = trim_mal(k)
+    if tm: swap_mal_candidates(cf, tm)
     try: rows = P.rerank(f'{ST}/{k}.tif', cf)
     except Exception as e: print(f'  rerank fail {k}: {e}', flush=True); continue
     if rows is None: continue
     with open(cf, 'w', newline='', encoding='utf-8') as f: w = csv.writer(f); w.writerow(P.COLS); w.writerows(rows)
-    # mal rows come from the trimmed pass; molecules with <2 surviving labels fall back to the
-    # full-label run so they still get a maligner row rather than a blank one.
-    F3V.to_figure3_csv(cf, trim_mal(k) or f'{ST}/{k}_maligner_dp.txt')   # 14->19 col, native mal
+    F3V.to_figure3_csv(cf, tm or f'{ST}/{k}_maligner_dp.txt')   # 14->19 col, native mal
     if LOGP:
         # rerank has just rewritten cf, so its log(P) holds null_logp; force restores the K=5000 null.
         print(f'  [logp] {k[:40]} -> {LP.compute_logp(k, ST, force=True)}', flush=True)
@@ -431,12 +499,24 @@ ANCH = '<div class="comparison-images"><div class="comparison-item"><div class="
 dep = 0
 for k in ok:
     vf = f'{ST}/{k}_view.html'
+    # The before/after panel is cosmetic and is wrapped so a failure here cannot abort the deploy
+    # loop: an escaping exception would leave every later molecule uncopied, which looks like a
+    # straightening failure (tif and view present, no _matching_results.csv).
     if BEFORE_AFTER and os.path.exists(vf):
+      try:
         h = open(vf, encoding='utf-8').read()
         if ANCH in h:
             rs = rawmol[k]; y = chosen_backbone(rs[0].astype(float)); v = np.where(~np.isnan(y))[0]
             x0, x1 = (int(v.min()), int(v.max())) if len(v) else (0, rs.shape[-1] - 1)
-            tp = f'{ST}/_raw_{k[:12]}.tif'; tifffile.imwrite(tp, rs[:, :, x0:x1 + 1].astype(np.uint16)); _, rb = process_query_image(tp); os.remove(tp)
+            os.makedirs(ST, exist_ok=True)
+            # full key + pid: a 12-character prefix collides between molecules from the same image,
+            # and the loser's file is deleted while the winner is still reading it.
+            tp = f"{ST}/_raw_{re.sub(r'[^A-Za-z0-9_.-]', '_', k)}_{os.getpid()}.tif"
+            tifffile.imwrite(tp, rs[:, :, x0:x1 + 1].astype(np.uint16))
+            try: _, rb = process_query_image(tp)
+            finally:
+                try: os.remove(tp)
+                except OSError: pass
             # length-honest display: raw(curved bbox width = x1-x0) and Linearized(arc-length = straightened
             # tif width) are drawn at a COMMON px-scale (raw scaled to raw_w/lin_w), center-aligned, so the
             # unfolding (straightened longer than the curved bounding box) is VISIBLE instead of both being
@@ -451,6 +531,8 @@ for k in ok:
             css = '<style id="lenfix">img.rawcurved{max-width:%.1f%% !important;}</style>' % pct
             h = h.replace('</head>', css + '</head>', 1) if '</head>' in h else css + h
             open(vf, 'w', encoding='utf-8').write(h)
+      except Exception as e:
+        print(f'  before/after skipped {k}: {type(e).__name__} {e}', flush=True)
     # _maligner_dp.txt is produced inside the staging dir, which is removed below, so it is
     # copied out with the rest: it holds the maligner metrics reported for the molecule.
     for suf in ('_matching_results.csv', '.tif', '_orig.tif', '_view.html', '_mlpeaks.json',

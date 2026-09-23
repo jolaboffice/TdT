@@ -20,7 +20,7 @@
  },
  "C": {
   "local1_ref": "chr20_m",
-  "local1_bp": 41485400,
+  "local1_bp": 41483200,
   "local1_F1": 0.89,
   "local2_ref": "chr20_p",
   "n_labels": 15

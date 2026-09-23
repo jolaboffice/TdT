@@ -492,3 +492,30 @@ all of its whole-molecule correlation. For the re-ranked pick the same two-level
 - **A GPU is required.** The pcc scan runs through CuPy and exits without it.
 - **One sample, one enzyme, one instrument.** Everything here is HG002 with Nb.BssSI at
   200 bp/pixel.
+
+## Defaults
+
+These are the settings the HG002 v1.2 run of all 3,164 molecules used. The last column gives the
+switch back to the simpler behaviour each one replaces.
+
+| Setting | Default | Simpler alternative |
+|---|---|---|
+| `genome.maps` site position | snapped to the true motif bp | `make_reference.py --grid binned` (`peak_index × bpp`, a 200 bp lattice) |
+| `BBFIX_THRESH` | **10** | `BBFIX_THRESH=40` |
+| `HDOM_TRIM_RULE` | **`outermost`** | `HDOM_TRIM_RULE=window`, a fixed 5 kb window |
+
+**Site snapping.** `peak_index × bpp` pins every site to a multiple of `bpp`. A single upstream
+indel shifts the phase of the downstream lattice, and then only the sites near a cell boundary jump
+a whole cell. Over the 703,252 sites that pair up between HG002 v1.1 and v1.2 the true movement is
+6 bp at the median, while a 200 bp map records "0 bp" for 95.0% of them and "≥200 bp" for 5.03%
+with nothing in between, so 4.5% of sites carry an error of about 194 bp that does not exist.
+maligner consumes those fragment lengths directly, which makes its answer sensitive to the
+reference version: across v1.1 and v1.2 the call is unchanged for 67.0% of molecules on a binned
+map against 96.2% on a snapped one. Snapping moves site coordinates only. The site set itself is
+unchanged in count, order and neighbours, and the TIFFs are not affected.
+
+**BBFIX_THRESH.** At 40 the backbone fix fires on 33 of the 3,164 molecules (1.0%), while roughly
+6-8% of them have a trace that zigzags through a faint stretch.
+
+**HDOM_TRIM_RULE.** A fixed 5 kb window can cut away real interior sites along with the terminal
+ones. `outermost` cuts only up to just outside the outermost label cluster at each end.
