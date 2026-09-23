@@ -64,9 +64,9 @@ molecules are the same three, so running both answers one question: does the ans
 having narrowed the search first. It does not — chromosome, haplotype, locus, F1 and the runner-up
 haplotype come out identical.
 
-The 47 reference maps are not in this repository: about 860 MB unzipped. They are deposited as
-their own Zenodo record, separate from this software, because they are data derived from a public
-assembly rather than part of the program:
+The 47 reference maps are not in this repository: 331 MB to download, about 900 MB unzipped.
+They are deposited as their own Zenodo record, separate from this software, because they are data
+derived from a public assembly rather than part of the program:
 
 **hDOM reference map for HG002 v1.2 (Nb.BssSI, 200 bp/pixel, sites at the true motif bp)**
 DOI: not yet assigned.

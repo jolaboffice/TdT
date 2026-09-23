@@ -12,8 +12,8 @@ does not depend on having narrowed the search first.
 
 ## The reference map is not in this repository
 
-47 chromosome maps are about 860 MB unzipped, more than a repository should hold. Download
-`hDOM_reference_map_HG002v12_1bp.zip` from the reference-map Zenodo record, which the top-level
+47 chromosome maps are about 900 MB unzipped, more than a repository should hold. Download
+`hDOM_reference_map_HG002v12_1bp.zip` (331 MB) from the reference-map Zenodo record, which the top-level
 README points to, unzip it, and point `--ref-map` at the folder it produces. The v1.1 map is a
 different assembly and does not reproduce `expected.json`.
 
