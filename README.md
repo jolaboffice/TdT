@@ -72,9 +72,7 @@ maps `sem_length` aligns against (`SGM_reference_maps_HG002v12.zip`):
 **hDOM and SGM reference maps for HG002 v1.2 (Nb.BssSI)**
 <https://doi.org/10.5281/zenodo.22929196>
 
-This is the map `hdom/example/` and `hdom/example_genome/expected.json` are recorded against. The
-v1.1 map at <https://doi.org/10.5281/zenodo.22121923> is a different assembly with sites on a
-200 bp lattice; it runs, but it places molecule A on the other haplotype and does not reproduce
-those expected values.
+This is the map `hdom/example/` and `hdom/example_genome/expected.json` are recorded against.
+An earlier assembly version does not reproduce those values.
 
 `hdom/example_genome/README.md` shows how to unpack and use them.
