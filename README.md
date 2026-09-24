@@ -66,10 +66,11 @@ haplotype come out identical.
 
 The 47 reference maps are not in this repository: 331 MB to download, about 900 MB unzipped.
 They are deposited as their own Zenodo record, separate from this software, because they are data
-derived from a public assembly rather than part of the program:
+derived from a public assembly rather than part of the program. The same record carries the SGM
+maps `sem_length` aligns against (`SGM_reference_maps_HG002v12.zip`):
 
-**hDOM reference map for HG002 v1.2 (Nb.BssSI, 200 bp/pixel, sites at the true motif bp)**
-DOI: not yet assigned.
+**hDOM and SGM reference maps for HG002 v1.2 (Nb.BssSI)**
+<https://doi.org/10.5281/zenodo.22929196>
 
 This is the map `hdom/example/` and `hdom/example_genome/expected.json` are recorded against. The
 v1.1 map at <https://doi.org/10.5281/zenodo.22121923> is a different assembly with sites on a

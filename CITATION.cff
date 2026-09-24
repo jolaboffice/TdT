@@ -13,7 +13,7 @@ abstract: >-
   reimplementing it. sem_length traces and measures DNA contours in SEM images. The aligner
   maligner (Mendelowitz et al., GPL v3) is bundled so the pipelines run without a separate build.
   Includes a two-chromosome example that runs anywhere and a genome-wide example against all 47
-  HG002 chromosome maps, which are deposited as their own record (doi:10.5281/zenodo.22121923).
+  HG002 chromosome maps, which are deposited as their own record (doi:10.5281/zenodo.22929196).
 references:
   - type: article
     title: >-
@@ -29,8 +29,8 @@ references:
         given-names: Kyubong
   - type: dataset
     title: >-
-      hDOM reference map for HG002 v1.1 (Nb.BssSI, 200 bp/pixel)
-    doi: 10.5281/zenodo.22121923
+      hDOM and SGM reference maps for HG002 v1.2 (Nb.BssSI)
+    doi: 10.5281/zenodo.22929196
     notes: >-
       Required by the genome-wide example. 47 chromosome maps and the in silico Nb.BssSI
       restriction map, deposited separately because they are data derived from a public assembly

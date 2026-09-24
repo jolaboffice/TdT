@@ -137,30 +137,28 @@ Rscript maligner_multirank_strip.R /path/to/data genome_smoothed_rm100.maps geno
 
 ## Reference maps
 
-The in silico Nb.BssSI maps for HG002 v1.1 used in the paper are `SGM_reference_maps_HG002v11`,
-one file per smoothing threshold. They are deposited as data rather than kept in this repository,
-so step 4 needs no `make_insilico_map` run of your own:
+The in silico Nb.BssSI maps for HG002 v1.2 used in the paper are `SGM_reference_maps_HG002v12.zip`,
+deposited in the same Zenodo record as the hDOM reference maps (DOI in the top-level README), so
+step 4 needs no `make_insilico_map` run of your own:
 
-| file | fragments below … merged | for |
+| file | fragments below … removed | for |
 |---|---|---|
-| `genome_unsmoothed.maps` | — | every predicted site |
-| `genome_smoothed_rm50.maps` | 50 bp | |
 | `genome_smoothed_rm100.maps` | 100 bp | **the map the paper aligns against** |
-| `genome_smoothed_rm150.maps` | 150 bp | |
-| `genome_FM_sm200.maps` | 200 bp | fluorescence-microscopy resolution, for FM↔SEM |
-| `genome_FM_sm600.maps` | 600 bp | fluorescence-microscopy resolution, for FM↔SEM |
+| `genome_unsmoothed.maps` | — | every predicted site; reference track in the rank figures |
 
-Each holds 46 sequences (chr1–22 in both haplotypes, plus `ChrX_m` and `ChrY_p`); `genome_FM_sm200.maps`
-additionally carries `ChrM`, for 47.
+Each holds 46 sequences (chr1–22 in both haplotypes, plus `ChrX_m` and `ChrY_p`).
 
 **rm100** is the one used for alignment: two nick sites closer than 100 bp (about 34 nm) are a
-single spot in the SEM image, so merging them in the reference keeps them from being counted as
-false negatives. Genome-wide this merges 2.2% of fragments (808,027 → 789,874).
+single spot in the SEM image, so dropping the fragment between them keeps them from being counted
+as false negatives. Genome-wide this removes 2.2% of fragments (808,027 → 789,874); the fragment's
+length goes with it, so rm100 is 840,030 bp shorter than the unsmoothed map.
+
+The HG002 v1.1 maps (doi:10.5281/zenodo.22703566) also carried `rm50`, `rm150`, `FM_sm200` and
+`FM_sm600`, comparison maps the analysis does not use.
 
 ## Data layout
 
-- Reference: `genome_*.maps` — one per smoothing threshold (`unsmoothed`,
-  `smoothed_rm{50,100,150}`, `FM_sm{200,600}`).
+- Reference: `genome_smoothed_rm100.maps` and `genome_unsmoothed.maps`.
 - Per molecule: `data/<QD###>/` with the SEM tiles, `config_<QD###>.json`, the
   stitched `<QD###>.tif`, `<QD###>.csv`, `<QD###>.maps`, `<QD###>_points.json`,
   and `<QD###>_mal.txt`.
