@@ -3,7 +3,7 @@
   "description": "Three tools from a single study of single-molecule genome mapping. hdom assigns molecules to chromosomal loci from two-channel optical maps, re-ranking candidates by a windowed backbone correlation multiplied by a label-set F1. sv_confidence decides whether an inversion or translocation in one molecule is supported, importing hdom's scoring engine rather than reimplementing it. sem_length traces and measures DNA contours in SEM images. The aligner maligner (Mendelowitz et al., GPL v3) is bundled so the pipelines run without a separate build. Includes a two-chromosome example that runs anywhere and a genome-wide example against all 47 HG002 chromosome maps, which are deposited as their own record (doi:10.5281/zenodo.22121923).",
   "upload_type": "software",
   "license": "GPL-3.0-only",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "related_identifiers": [
     {
       "identifier": "10.5281/zenodo.22121923",
