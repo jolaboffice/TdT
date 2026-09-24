@@ -3,7 +3,7 @@ message: If you use this software, please cite it using these metadata.
 type: software
 title: >-
   hDOM-toolkit: single-molecule genome mapping, structural-variant confidence, and SEM contour measurement
-version: 2.0.0
+version: 1.0.0
 license: GPL-3.0-only
 abstract: >-
   Three tools from a single study of single-molecule genome mapping. hdom assigns molecules to
