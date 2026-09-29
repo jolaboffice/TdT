@@ -6,8 +6,12 @@ can compute the same per-molecule log(P) inline (instead of a separate post-proc
 Method (identical to the sidecar generator):
   - null = K random genome positions on OTHER chromosomes; each scored by score_pos
     (max over scale-grid x direction of  local_cc_r x label-F1).
-  - for each local rank: obs=score_pos at its aligned_bp; z=(obs-mu)/sd;
-    log_p = log10(sf(z))  (<=0, per-position);  log_E = log_p + log10(N_independent).
+  - for each local rank: obs = the ranking score the CSV row carries (local cc_r x F1 x the shift
+    penalty), so h_score orders the candidates the same way the score column does;
+    z=(obs-mu)/sd;  log_p = log10(sf(z))  (<=0, per-position);  log_E = log_p + log10(N_ind).
+    The null's decoys are scored by score_pos, which re-optimises scale and direction at the drawn
+    position, so mu sits slightly above what the row-score definition would give a decoy and log_p
+    is conservative by that much.
   - CSV "log(P)" for LOCAL rows := log_p (display).  mal/pcc rows are left untouched.
   - writes {base}_vsrandom.txt sidecar (keeps both log_p and log_E, plus null stats).
 
@@ -176,6 +180,31 @@ def score_pos(M, dp, w2, rr, pk, rl, pos):
     return best
 
 
+def row_score(r):
+    """The ranking score exactly as the CSV row carries it: local cc_r x label F1 x shift penalty.
+
+    h_score is read off the same number the table shows, so a molecule cannot rank first on score
+    and second on h_score. The columns are the rounded values the CSV stores, which is what the
+    reported h_score is computed from.
+
+    Returns None when a column the score needs is absent -- a CSV written before the penalty
+    columns existed -- and the caller then falls back to score_pos.
+    """
+    try:
+        lc = float(r['local_cc_r']); f1 = float(r['F1'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if P.SHIFT_PEN:
+        try:
+            pen = float(r['w_coh'])
+        except (KeyError, TypeError, ValueError):
+            return None
+    else:
+        pen = 1.0
+    v = max(lc, 0.0) * f1 * pen
+    return v if v == v else None
+
+
 def build_null(M, dp, w2, chrs, seedbase):
     """Returns (null_scores, best_decoy). best_decoy=(score, chrom, pos_bp) = the single
     highest-scoring random position (= best 'wrong answer' among the sampled decoys), saved
@@ -287,7 +316,9 @@ def compute_logp(base, folder, dp=None, force=False):
         if ref not in ALL:
             continue
         rr, pk, rl = ALL[ref]
-        obs = score_pos(M, dp, w2, rr, pk, rl, int(r['aligned_bp']))
+        obs = row_score(r)
+        if obs is None:
+            obs = score_pos(M, dp, w2, rr, pk, rl, int(r['aligned_bp']))
         z = (obs - mu) / sd
         # Upper tail of the fitted normal, base 10. logsf works in log space, so no underflow
         # however large z gets (z = 29.9 is the largest seen). obs is typically past the null's

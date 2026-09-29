@@ -236,7 +236,11 @@ uses the default; `HDOM_TRIM_PX=0` turns the trim off and scores every label.
 
 Optional (`--logp`). For each molecule, `K = 5000` decoy windows are drawn from every chromosome
 *except* the one the molecule matched (both haplotypes of that chromosome are excluded), each
-scored by the same `cc_r^loc × F1` with the same freedom over the scale grid and both directions.
+scored by `cc_r^loc × F1 × w_coh` with the freedom over the scale grid and both directions that a
+real candidate also gets. That freedom is the one asymmetry between the two sides of `z`: a decoy is
+re-optimised over the grid at its drawn position, while `S_obs` is taken at the scale and direction
+the ranking settled on, which need not be a grid point. `μ̂` therefore sits a little above what the
+row-score definition alone would give a decoy, and `log₁₀ P` is conservative by that much.
 The draw is seeded from `md5(molecule name)`, so a re-run reproduces the same null. A reference
 holding only the matched chromosome has no population to draw from and reports `nodecoy`.
 
@@ -247,8 +251,10 @@ overwrites the `log(P)` column with the within-molecule `null_logp` of §4 on it
 the recompute, the column read back would be that value rather than the `K = 5000` one.
 
 The observed score becomes a p-value **parametrically, not by counting**. A normal distribution
-is fitted to the null by moment matching, and `log₁₀ P` is read from its upper tail. With
-`S = cc_r^loc × F1` and `S₁ … S_K` the decoy scores:
+is fitted to the null by moment matching, and `log₁₀ P` is read from its upper tail. `S_obs` is the
+ranking score the candidate row carries, `cc_r^loc × F1 × w_coh`, read from the columns the table
+shows, so `h_score` orders the candidates exactly as the score column does. With `S₁ … S_K` the
+decoy scores:
 
 ```
 μ̂       = (1/K) Σ Sₖ                     # np.mean
