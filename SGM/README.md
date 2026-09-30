@@ -57,7 +57,7 @@ SEM against fluorescence-microscopy (FM) maps.
 | `run_interactive.py` | Launcher for the measurement GUI on one image. |
 | `smooth_maps_batch.py` | Smooths `.maps` (merges fragments below a bp threshold via maligner's `smooth_left_right`) into `*_sm<N>.maps`; originals untouched. |
 | `maligner_multirank_strip.R` | Draws the per-molecule rank figures: query and reference label strips on a shared bp axis, one panel per rank, with the fragment-size table. Needs R with `ggplot2`. |
-| `sem_view.py` | Re-frames what the steps above already produced into the hDOM align-page layout: one `<QD###>_view_ytb.html` per molecule plus a `<QD###>_matching_results.csv` in the hDOM schema, so `index.php?file=<QD###>` renders the same table, navigation and marking UI as a fluorescence molecule. Nothing is re-aligned. Borrows the page style from `../hdom/hdom` (override with `HDOM_DIR`). |
+| `sem_view.py` | Re-frames what the steps above already produced into the hDOM align-page layout: one `<QD###>_view_ytb.html` per molecule plus a `<QD###>_matching_results.csv` in the hDOM schema, so `index.php?file=<QD###>` renders the same table, navigation and marking UI as a fluorescence molecule. Nothing is re-aligned. Borrows the page style from `../hDOM/hdom` (override with `HDOM_DIR`). |
 | `sem_trace_panel.py` | Redraws one molecule's SEM panel as the raw photo with the trace and QD marks lifted clear of the DNA, and resamples the query / rank strips onto that photo's axis so the labels line up with the arrows. Run it per molecule after `sem_view.py`. |
 
 ## Viewing the result

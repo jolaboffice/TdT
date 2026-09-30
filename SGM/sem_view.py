@@ -44,9 +44,10 @@ from PIL import Image
 from scipy.ndimage import map_coordinates
 
 # The style and toolbar are borrowed from the hDOM viewer, so an SGM page sits in the same frame
-# as an alignment page. This reads the hdom package in this repository; HDOM_DIR points elsewhere.
+# as an alignment page. This reads the hdom package in this repository (hDOM/hdom); HDOM_DIR points
+# elsewhere.
 _HDOM = os.environ.get('HDOM_DIR') or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hdom', 'hdom')
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'hDOM', 'hdom')
 sys.path.insert(0, _HDOM)
 from hDOM_tif2html import get_html_style                      # noqa: E402
 import hDOM_view as V                                         # noqa: E402

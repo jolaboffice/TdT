@@ -2,7 +2,7 @@
 # in the source shows up as a failure rather than working by accident.
 #
 # Workflows are only read from .github/workflows at the root of the repository, so this file sits
-# here rather than beside the tool it runs; `working-directory` puts each step back in hdom/.
+# here rather than beside the tool it runs; `working-directory` puts each step back in hDOM/.
 name: tests
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: hdom
+        working-directory: hDOM
     strategy:
       matrix:
         python-version: ['3.9', '3.11']

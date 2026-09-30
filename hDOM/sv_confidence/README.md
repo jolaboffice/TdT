@@ -51,11 +51,11 @@ are included with this code set and must be importable — put their directories
 `config.py` centralises every path and lets each be overridden with an environment
 variable. Three kinds:
 
-- **Shared code** — `SV_LA_CODE`, `SV_ML_CODE`, `SV_HOMOLOG_CODE`: default to `../hdom/hdom`
+- **Shared code** — `SV_LA_CODE`, `SV_ML_CODE`, `SV_HOMOLOG_CODE`: default to `../hdom`
   in this repository, so nothing needs setting. `SV_PROJECT_ROOT` (default: parent of
   this folder) roots the artifacts below.
 - **Input data** — `SV_ROOT`, `SV_POOL_DIR`, `SV_FIG4`: the molecule images the analysis runs
-  on, which are output of the mapping pipeline in `../hdom`. **These have no default and must be
+  on, which are output of the mapping pipeline in `..`. **These have no default and must be
   set** — they are your own data, and a guessed path would either fail late or read the wrong
   images. Nothing here ships with the package:
   - `SV_ROOT` — molecule tifs + `matching_results.csv`; `analyze_inversion` default source (base_dir overrides).

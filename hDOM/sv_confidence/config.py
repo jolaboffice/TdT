@@ -8,9 +8,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.environ.get('SV_PROJECT_ROOT', os.path.dirname(_HERE))
 
 
-# Repository root, two levels up from this file, so the defaults below work wherever the
-# checkout happens to sit.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The hDOM folder of the repository, one level up from this file, so the defaults below work
+# wherever the checkout happens to sit.
+HDOM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _env(key, default):
     return os.environ.get(key, default)
@@ -18,15 +18,15 @@ def _env(key, default):
 
 # --- Shared analysis code (must be importable) -----------------------------
 # local_align_pipeline / mdom_reanchor / DOM_lib_Y
-# The scoring engine lives in this repository, one level up: sv_confidence imports
+# The scoring engine lives beside this folder, in hDOM/hdom: sv_confidence imports
 # local_align_pipeline, mdom_reanchor and DOM_lib_Y from the mapping pipeline's package
 # rather than carrying its own copy, so both lines score with the same code.
-LA_CODE = _env('SV_LA_CODE', os.path.join(REPO_ROOT, 'hdom', 'hdom'))
+LA_CODE = _env('SV_LA_CODE', os.path.join(HDOM_ROOT, 'hdom'))
 # homologue-comparison helpers
 # Haplotype PAF liftover; the mapping pipeline ships it as paf_liftover.
-HOMOLOG_CODE = _env('SV_HOMOLOG_CODE', os.path.join(REPO_ROOT, 'hdom', 'hdom'))
+HOMOLOG_CODE = _env('SV_HOMOLOG_CODE', os.path.join(HDOM_ROOT, 'hdom'))
 # ML nick-label detector (Label_Detect_ML_based)
-ML_CODE = _env('SV_ML_CODE', os.path.join(REPO_ROOT, 'hdom', 'hdom'))
+ML_CODE = _env('SV_ML_CODE', os.path.join(HDOM_ROOT, 'hdom'))
 
 # --- Input data (molecule images from the hDOM pipeline; not shipped here) --
 # molecule tifs + matching_results.csv; analyze_inversion default source ({ROOT}/<group>)
