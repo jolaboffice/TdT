@@ -249,6 +249,28 @@ def chosen_backbone(red, sm=None):
     if d <= 0 or d * _band_dev(r0[0][0]) < BBFIX_THRESH: return y
     return yb
 
+def _is_hand_placed(j, ml):
+    """Does this sidecar carry positions a PERSON placed, rather than pinned detector output?
+
+    snap() is skipped for hand-placed labels only (see its call site), and the exemption has to be
+    narrow. Most sidecars in a run exist to PIN the detector's own positions so that a reference
+    change cannot also change the labels; those positions came out of the detector and need the
+    same warp correction a freshly detected label gets. Skipping snap for them moves a label of
+    nearly every molecule in the run by a pixel or two, which is enough to reorder two homologues
+    whose scores sit within a percent of each other.
+
+    `hand_placed` decides it when the sidecar states it. Otherwise the sidecar is read as a pin
+    when `pinned_to` names a bare provenance tag (a version, no spaces) AND the label count still
+    matches the detector's: an edit that added or removed a label cannot be a pin, and a
+    `pinned_to` carrying prose is a note someone wrote about a placement of their own.
+    """
+    v = j.get('hand_placed')
+    if isinstance(v, bool):
+        return v
+    pt = j.get('pinned_to')
+    pinned = bool(isinstance(pt, str) and pt and ' ' not in pt and len(ml) == j.get('n_detect'))
+    return not pinned
+
 def snap(oc, sweptgreen):
     """Move each warped label onto the nearest real green peak in the straightened image (+-4 px).
 
@@ -325,8 +347,9 @@ for k in mine:
             try:
                 _j = json.load(open(_ef, encoding='utf-8'))
                 ml = sorted(int(round(float(x))) for x in _j.get('final', []))
-                _hand = True
-                print(f'  [labeledit] {k}: {len(ml)} labels (snap off: hand-placed)', flush=True)
+                _hand = _is_hand_placed(_j, ml)
+                _why = 'snap off: hand-placed' if _hand else 'snap on: pinned detection'
+                print(f'  [labeledit] {k}: {len(ml)} labels ({_why})', flush=True)
             except Exception as e:
                 print(f'  labeledit read fail {k}: {e}', flush=True); ml = None
     if ml is None:
@@ -340,7 +363,9 @@ for k in mine:
         # label already says where the person decided the site is, and snap's peak list uses the same
         # 25%-of-max floor the detector does -- so a label deliberately put on a peak below that floor
         # gets dragged onto whichever accepted peak sits within +-4 px, silently merging it with a
-        # neighbour and discarding the edit. Curated sets therefore keep their warped positions.
+        # neighbour and discarding the edit. Hand-placed sets therefore keep their warped positions.
+        # A sidecar that only PINS the detector's own positions is not hand-placed and is snapped
+        # like any detected label -- see _is_hand_placed().
         if SNAP_ON and not _hand: oc = snap(oc, st[1])
     else:
         # Crop to the traced span even here. The raw frame carries 0-5% background beyond the

@@ -56,6 +56,19 @@ hand-checked molecule differs from an automatic one only in where its labels cam
 with no such file are unaffected. The variable is unset by default; it exists so that a molecule
 whose labels were checked by eye can be re-run without editing the image.
 
+A sidecar is used in one of two ways, and the difference matters because it decides whether the
+straightener's `snap` correction applies (section 2). A sidecar that only **pins** the detector's
+own positions -- so that a reference change cannot also change the labels -- carries positions that
+came out of the detector, and they are snapped like any detected label. A sidecar whose positions a
+**person placed** is exempt from snap, because snap's peak list uses the detector's own 25%-of-max
+floor: a label deliberately put on a fainter peak would be dragged onto whichever accepted peak lies
+within 4 px, merging it with a neighbour and discarding the edit. Set `"hand_placed": true` or
+`false` in the sidecar to state which it is. Without that field the file is read as a pin when
+`pinned_to` holds a bare provenance tag (a version string, no spaces) and the `final` array still
+holds as many labels as `n_detect` records; anything else is treated as hand-placed. Pinning is by
+far the commoner case, so reading every sidecar as hand-placed would shift a label of nearly every
+molecule in a run by a pixel or two.
+
 ---
 
 ## 2. Straightening
