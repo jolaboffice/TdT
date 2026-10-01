@@ -31,6 +31,7 @@ Usage: python3 sem_view.py --data <data dir> --out <folder> [--template-index <i
 import argparse
 import base64
 import csv
+from decimal import Decimal, ROUND_HALF_UP
 import glob
 import io
 import json
@@ -73,6 +74,7 @@ BAND = {'query': (170, 215), 'ref_sm': (215, 260), 'ref_raw': (260, 305)}
 W = int(os.environ.get('SEM_VIEW_W', 6000))
 HALF = 26                        # data panel half-height in source pixels around the trace
 N_PANEL = 2                      # ref panels drawn as fixed rows; the rest stay in the selector
+_Q = Decimal('0.01')             # F1 is written to two decimals, half-up
 
 
 def b64(img):
@@ -229,10 +231,16 @@ def mal_rows(folder, qd, limit):
             continue
         # hDOM convention: molecule_bp * scale = ref span covered (hDOM_view: raw_w*BPP*scale)
         scale = (re_ - rs) / (qe - qs) if qe != qs else 1.0
-        f1 = 2 * matched / (2 * matched + fp + fn) if (2 * matched + fp + fn) else 0.0
+        # num_matched_chunks counts matched chunks; K chunks join K-1 labels, so F1 is
+        # reported on the label basis like the hDOM tables, while mal_matched keeps
+        # maligner's native chunk count.
+        lab = max(0, matched - 1)
+        den = 2 * lab + fp + fn
+        # Half-up to two decimals, so the CSV reads exactly as the page's number_format does.
+        f1 = Decimal(repr(2 * lab / den if den else 0.0)).quantize(_Q, rounding=ROUND_HALF_UP)
         rows.append([i, norm_ref(r['ref_map']), 'mal', int(rs),
                      1 if r['is_forward'].upper().startswith('F') else -1, round(scale, 2),
-                     '', '', '', '', '', '', '', round(f1, 2), r.get('m_score', ''),
+                     '', '', '', '', '', '', '', str(f1), r.get('m_score', ''),
                      matched, fp, fn, r.get('sizing_score_rescaled', '')])
     return rows
 
