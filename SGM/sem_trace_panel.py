@@ -67,18 +67,30 @@ TL = int(round(a.tick_len*f)); HD = int(round(a.head*f))
 TH = max(1, int(round(a.tick_th*f)) | 1); GAP = int(round(a.gap*f))
 ux = np.unique(xs); uy = np.array([ys[xs == x].mean() for x in ux])
 _xx = np.arange(int(ux.min()), int(ux.max())+1); _yy = np.interp(_xx, ux, uy)
+# Does the molecule double back? Everything below models the trace as one y per column, which a
+# molecule that folds on itself is not: its columns hold two branches, their mean follows neither,
+# and an arc length indexed by x cannot carry bp onto the image. Count the columns that hold more
+# than one run of trace, and take the measured mask itself where there are many.
+_nmulti = 0
+for _x in ux:
+    _c = np.nonzero(red[:, _x])[0]
+    if len(_c) > 1 and int((np.diff(_c) > 1).sum()):
+        _nmulti += 1
+FOLDED = _nmulti > 0.02*len(ux)
+_my = np.nonzero(red.any(1))[0]
+_ylo, _yhi = (float(_my.min()), float(_my.max())) if FOLDED else (float(_yy.min()), float(_yy.max()))
 # Which side the annotation goes. A trace that runs near the top of the frame leaves no room
 # above, and padding the canvas makes the whole panel smaller on screen; drop it below instead
 # when there is room there. The arrow still points back at the trace either way.
 NEED = OFF + GAP + TL + TR
 if a.side == 'auto':
-    SIDE = -1 if (float(_yy.min()) >= NEED or (H - float(_yy.max())) < NEED) else +1
+    SIDE = -1 if (_ylo >= NEED or (H - _yhi) < NEED) else +1
 else:
     SIDE = -1 if a.side == 'up' else +1
 if SIDE < 0:
-    PAD = max(0, int(np.ceil(NEED - float(_yy.min()))) + 10); PADB = 0
+    PAD = max(0, int(np.ceil(NEED - _ylo)) + 10); PADB = 0
 else:
-    PAD = 0; PADB = max(0, int(np.ceil(NEED - (H - float(_yy.max())))) + 10)
+    PAD = 0; PADB = max(0, int(np.ceil(NEED - (H - _yhi))) + 10)
 H = H + PAD + PADB
 _b = raw
 if PAD:  _b = np.vstack([np.zeros((PAD, W), raw.dtype), _b])
@@ -87,24 +99,47 @@ out = np.dstack([_b, _b, _b]).copy()
 def put(yy, xx, rgb):
     yy = yy + PAD
     ok = (yy >= 0) & (yy < H) & (xx >= 0) & (xx < W); out[yy[ok], xx[ok]] = rgb
-for oy in range(-TR, TR+1):
-    for ox in range(-TR, TR+1):
-        if oy*oy + ox*ox > TR*TR: continue
-        put(np.round(_yy+oy).astype(int) + SIDE*OFF, _xx+ox, (139, 0, 0))
-# QD positions: cumulative bp from .maps laid onto the trace's arc length. The trace runs from
-# the first label to the last (within 7-11 px on every molecule checked), so its whole arc length
-# corresponds to the total bp.
-_ds = np.hypot(np.diff(_xx), np.diff(_yy))
-_s = np.concatenate([[0.0], np.cumsum(_ds)])
-_cum = np.concatenate([[0.0], np.cumsum(fr)]); _cum /= _cum[-1]
-QX = np.interp(_cum*_s[-1], _s, _xx)          # x of each QD
+_disk = np.hypot(*np.mgrid[-TR:TR+1, -TR:TR+1]) <= TR
+if FOLDED:
+    # Lift the measured mask instead of a reconstructed line, so both branches survive. The QD
+    # circles painted over the trace leave short gaps in it; a horizontal closing bridges those
+    # without joining anything that is really apart.
+    _m = ndi.binary_dilation(ndi.binary_closing(red, np.ones((1, 41), bool)), _disk)
+    _fy, _fx = np.nonzero(_m)
+    put(_fy + SIDE*OFF, _fx, (139, 0, 0))
+else:
+    for oy in range(-TR, TR+1):
+        for ox in range(-TR, TR+1):
+            if oy*oy + ox*ox > TR*TR: continue
+            put(np.round(_yy+oy).astype(int) + SIDE*OFF, _xx+ox, (139, 0, 0))
+# QD positions. `_points.json` holds every click with a type, so the 'measure' ones are exactly the
+# labels and the 'guide' ones -- which only steer the least-cost path -- drop out; they are stored
+# in click order, i.e. along the molecule, which is the order a folded trace needs. Falling back to
+# bp laid on the arc length indexed by x places a label wherever that index is not monotonic, which
+# on a molecule that doubles back is most of it.
+QXY = None
+try:
+    _j = json.load(open(f'{D}/{k}_points.json', encoding='utf-8'))
+    _mp = [p for p, t in zip(_j['points'], _j['point_types']) if t == 'measure']
+    if len(_mp) == len(fr) + 1: QXY = np.asarray(_mp, float)
+except Exception as _e:
+    print(f'  [{k}] points read failed ({type(_e).__name__}), falling back to the bp projection',
+          flush=True)
+if QXY is not None:
+    QX, QY = QXY[:, 0], QXY[:, 1]
+else:
+    _ds = np.hypot(np.diff(_xx), np.diff(_yy))
+    _s = np.concatenate([[0.0], np.cumsum(_ds)])
+    _cum = np.concatenate([[0.0], np.cumsum(fr)]); _cum /= _cum[-1]
+    QX = np.interp(_cum*_s[-1], _s, _xx)      # x of each QD
+    QY = np.interp(QX, ux, uy)
 d = np.array([0.0, float(SIDE)]); th = np.deg2rad(a.head_deg)
 def stroke(pts):
     for oy in range(-(TH//2), TH//2+1):
         for ox in range(-(TH//2), TH//2+1):
             put(np.round(pts[:, 1]+oy).astype(int), np.round(pts[:, 0]+ox).astype(int), (255, 255, 0))
-for cx in QX:
-    p0 = np.array([cx, float(np.interp(cx, ux, uy)) + SIDE*OFF]) + GAP*d
+for cx, cy in zip(QX, QY):
+    p0 = np.array([cx, float(cy) + SIDE*OFF]) + GAP*d
     stroke(p0[None, :] + np.outer(np.linspace(0, 1, TL*3)*TL, d))
     rp = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]]) @ d
     rm = np.array([[np.cos(-th), -np.sin(-th)], [np.sin(-th), np.cos(-th)]]) @ d
